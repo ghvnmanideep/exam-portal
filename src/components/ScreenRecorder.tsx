@@ -1,0 +1,132 @@
+import React, { useEffect, useRef } from 'react';
+
+interface ScreenRecorderProps {
+  onPermissionDenied: () => void;
+  onStreamStop?: () => void;
+}
+
+const CAPTURE_INTERVAL_MS = 10000; // 10 seconds
+
+const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onStreamStop }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const startScreenShare = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { 
+            displaySurface: 'monitor'
+          },
+          audio: false,
+        });
+
+        if (!active) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        const videoTrack = stream.getVideoTracks()[0];
+        
+        // Strict check to ensure the user shared the entire screen
+        const settings = videoTrack.getSettings();
+        if (settings.displaySurface && settings.displaySurface !== 'monitor') {
+          stream.getTracks().forEach((t) => t.stop());
+          alert('You MUST share your "Entire Screen" for the exam. Windows or chrome tabs are not allowed.');
+          if (active) onPermissionDenied();
+          return;
+        }
+
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+
+        video.srcObject = stream;
+
+        if (videoTrack) {
+          videoTrack.addEventListener('ended', () => {
+            if (active && onStreamStop) {
+              onStreamStop();
+            }
+          });
+        }
+
+        video.addEventListener('playing', () => {
+          if (!active) return;
+          setTimeout(() => {
+            if (!active) return;
+            captureImage();
+            intervalRef.current = window.setInterval(captureImage, CAPTURE_INTERVAL_MS);
+          }, 1500);
+        }, { once: true });
+
+      } catch (err) {
+        console.error('Screen sharing error:', err);
+        if (active) onPermissionDenied();
+      }
+    };
+
+    startScreenShare();
+
+    return () => {
+      active = false;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, [onPermissionDenied, onStreamStop]);
+
+  const captureImage = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    if (dataUrl.length < 5000) {
+      return;
+    }
+
+    saveImage(dataUrl);
+  };
+
+  const saveImage = (base64Image: string) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem('examScreenCaptures') || '[]');
+      existing.push({ timestamp: new Date().toISOString(), image: base64Image });
+      localStorage.setItem('examScreenCaptures', JSON.stringify(existing));
+      console.log('Screen captured at', new Date().toLocaleTimeString());
+    } catch (e) {
+      console.error('localStorage save failed for screen captures:', e);
+    }
+  };
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed', bottom: 0, right: 0,
+        width: '1px', height: '1px',
+        overflow: 'hidden', pointerEvents: 'none', zIndex: -1,
+      }}
+    >
+      <video ref={videoRef} autoPlay playsInline muted style={{ width: '160px', height: '120px', display: 'block' }} />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+    </div>
+  );
+};
+
+export default ScreenRecorder;

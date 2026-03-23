@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Camera, Mic, Clock, Download, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Trash2, Camera, Mic, Clock, Download, Image as ImageIcon, Monitor } from 'lucide-react';
 
 interface CapturedImage {
   timestamp: string;
@@ -14,12 +14,14 @@ interface CapturedAudio {
 
 const Admin: React.FC = () => {
   const [images, setImages] = useState<CapturedImage[]>([]);
+  const [screenCaptures, setScreenCaptures] = useState<CapturedImage[]>([]);
   const [audios, setAudios] = useState<CapturedAudio[]>([]);
   const [selected, setSelected] = useState<CapturedImage | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     loadImages();
+    loadScreenCaptures();
     loadAudios();
   }, []);
 
@@ -27,6 +29,13 @@ const Admin: React.FC = () => {
     const stored = localStorage.getItem('examImages');
     if (stored) {
       setImages(JSON.parse(stored));
+    }
+  };
+
+  const loadScreenCaptures = () => {
+    const stored = localStorage.getItem('examScreenCaptures');
+    if (stored) {
+      setScreenCaptures(JSON.parse(stored));
     }
   };
 
@@ -40,8 +49,10 @@ const Admin: React.FC = () => {
   const clearImages = () => {
     if (window.confirm('Are you sure you want to clear all captured media?')) {
       localStorage.removeItem('examImages');
+      localStorage.removeItem('examScreenCaptures');
       localStorage.removeItem('examAudio');
       setImages([]);
+      setScreenCaptures([]);
       setAudios([]);
     }
   };
@@ -90,12 +101,12 @@ const Admin: React.FC = () => {
           <h2 style={{ margin: 0, fontWeight: 600 }}>Exam Captures</h2>
         </div>
         <div className="navbar-user" style={{ gap: '0.75rem' }}>
-          {images.length > 0 && (
+          {(images.length > 0 || screenCaptures.length > 0) && (
             <span className="badge" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
-              {images.length} capture{images.length !== 1 ? 's' : ''}
+              {images.length + screenCaptures.length} capture{images.length + screenCaptures.length !== 1 ? 's' : ''}
             </span>
           )}
-          {images.length > 0 && (
+          {(images.length > 0 || screenCaptures.length > 0 || audios.length > 0) && (
             <button onClick={clearImages} className="btn-icon flex items-center gap-2" style={{ color: 'var(--error-color)' }}>
               <Trash2 size={16} /> Clear All
             </button>
@@ -120,6 +131,12 @@ const Admin: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Face Camera Captures Section */}
+        <h3 style={{ marginTop: '1.5rem', marginBottom: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Camera size={20} className="icon-primary" />
+          Face Camera Captures
+        </h3>
 
         {images.length === 0 ? (
           <div style={{
@@ -184,6 +201,89 @@ const Admin: React.FC = () => {
                   <button
                     onClick={() => downloadImage(img, idx)}
                     title="Download image"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--primary-color)', padding: '0.25rem', borderRadius: '0.25rem',
+                      display: 'flex', alignItems: 'center',
+                    }}
+                  >
+                    <Download size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Screen Captures Section */}
+        <h3 style={{ marginTop: '2.5rem', marginBottom: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Monitor size={20} className="icon-primary" />
+          Screen Captures
+        </h3>
+        
+        {screenCaptures.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '4rem 2rem',
+            background: 'white', borderRadius: '0.75rem',
+            border: '2px dashed var(--border-color)',
+          }}>
+            <Monitor size={40} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
+            <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>No screen captures yet</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+              Start an exam session to begin capturing screen images automatically.
+            </p>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: '1.25rem',
+          }}>
+            {screenCaptures.map((img, idx) => (
+              <div key={idx} style={{
+                background: 'white', borderRadius: '0.75rem',
+                overflow: 'hidden', border: '1px solid var(--border-color)',
+                boxShadow: 'var(--shadow-sm)', transition: 'box-shadow 0.2s, transform 0.2s',
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-md)'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-sm)'; (e.currentTarget as HTMLDivElement).style.transform = 'none'; }}
+              >
+                {/* Clickable image */}
+                <div
+                  onClick={() => setSelected(img)}
+                  style={{ cursor: 'zoom-in', position: 'relative', overflow: 'hidden', aspectRatio: '16/9', background: '#000' }}
+                >
+                  <img
+                    src={img.image}
+                    alt={`Screen Capture ${idx + 1}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform 0.2s' }}
+                    onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.03)')}
+                    onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                  />
+                  <div style={{
+                    position: 'absolute', top: '0.5rem', left: '0.5rem',
+                    background: 'rgba(0,0,0,0.55)', color: 'white',
+                    fontSize: '0.7rem', fontWeight: 700,
+                    padding: '2px 8px', borderRadius: '999px',
+                  }}>
+                    #{idx + 1}
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div style={{
+                  padding: '0.65rem 0.85rem',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  borderTop: '1px solid var(--border-color)',
+                  background: 'var(--bg-color)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                    <Clock size={12} />
+                    {formatDate(img.timestamp)} · {formatTime(img.timestamp)}
+                  </div>
+                  <button
+                    onClick={() => downloadImage(img, idx)}
+                    title="Download capture"
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       color: 'var(--primary-color)', padding: '0.25rem', borderRadius: '0.25rem',

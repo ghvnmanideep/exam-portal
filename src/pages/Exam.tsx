@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CameraRecorder from '../components/CameraRecorder';
+import ScreenRecorder from '../components/ScreenRecorder';
 import CameraPopup from '../components/CameraPopup';
 import { QUESTIONS } from '../data/questions';
 import { getUser } from '../utils/auth';
@@ -14,6 +15,7 @@ const Exam: React.FC = () => {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [isFinished, setIsFinished] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [screenPermissionDenied, setScreenPermissionDenied] = useState(false);
   const [showRightClickToast, setShowRightClickToast] = useState(false);
   const [showScreenshotToast, setShowScreenshotToast] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -22,8 +24,9 @@ const Exam: React.FC = () => {
   const [faceWarningCount, setFaceWarningCount] = useState(0);
   const [showFaceWarning, setShowFaceWarning] = useState(false);
   const [fullscreenTimeLeft, setFullscreenTimeLeft] = useState(30);
+  const [isBlurred, setIsBlurred] = useState(false);
   
-  const isFaceDetected = useFaceDetection(cameraStream, !isFinished && !permissionDenied);
+  const isFaceDetected = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
   const navigate = useNavigate();
   const user = getUser();
@@ -37,6 +40,17 @@ const Exam: React.FC = () => {
 
   const handlePermissionDenied = React.useCallback(() => {
     setPermissionDenied(true);
+  }, []);
+
+  const handleScreenPermissionDenied = React.useCallback(() => {
+    setScreenPermissionDenied(true);
+  }, []);
+
+  const handleScreenStreamStop = React.useCallback(() => {
+    if (isFinishedRef.current) return;
+    recordViolation('screen_sharing_stopped');
+    alert('EXAM AUTO-SUBMITTED: Screen sharing was stopped.');
+    finishExam();
   }, []);
 
   // ---- Fullscreen enforcement ----
@@ -55,7 +69,7 @@ const Exam: React.FC = () => {
 
   // ---- Fullscreen Exit Auto-Submit Timer ----
   useEffect(() => {
-    if (isFinished || permissionDenied) return;
+    if (isFinished || permissionDenied || screenPermissionDenied) return;
 
     if (!isFullscreen) {
       setFullscreenTimeLeft(30);
@@ -82,7 +96,7 @@ const Exam: React.FC = () => {
     return () => {
       if (fullscreenTimerRef.current) clearInterval(fullscreenTimerRef.current);
     };
-  }, [isFullscreen, isFinished, permissionDenied]);
+  }, [isFullscreen, isFinished, permissionDenied, screenPermissionDenied]);
 
   const requestFullscreen = async () => {
     try {
@@ -142,15 +156,17 @@ const Exam: React.FC = () => {
     // Use capturing phase to intercept before other listeners
     window.addEventListener('keydown', handleKeyDown, true);
     
-    // Also try to clear clipboard on copy attempt as a fallback
-    const handleCopy = (e: ClipboardEvent) => {
+    // Also try to clear clipboard on copy/cut/paste attempt as a fallback
+    const handleClipboard = (e: ClipboardEvent) => {
       e.preventDefault();
       setShowScreenshotToast(true);
       if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
       screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
-      recordViolation('copy_attempt');
+      recordViolation(`${e.type}_attempt`);
     };
-    window.addEventListener('copy', handleCopy, true);
+    window.addEventListener('copy', handleClipboard, true);
+    window.addEventListener('cut', handleClipboard, true);
+    window.addEventListener('paste', handleClipboard, true);
 
     // Prevent 'keyup' PrintScreen as well (sometimes only keyup registers for PrintScreen)
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -167,7 +183,9 @@ const Exam: React.FC = () => {
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('copy', handleCopy, true);
+      window.removeEventListener('copy', handleClipboard, true);
+      window.removeEventListener('cut', handleClipboard, true);
+      window.removeEventListener('paste', handleClipboard, true);
       window.removeEventListener('keyup', handleKeyUp, true);
       if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
     };
@@ -175,7 +193,7 @@ const Exam: React.FC = () => {
 
   // Timer Effect
   useEffect(() => {
-    if (isFinished || permissionDenied) return;
+    if (isFinished || permissionDenied || screenPermissionDenied) return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) { clearInterval(timer); finishExam(); return 0; }
@@ -183,7 +201,7 @@ const Exam: React.FC = () => {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isFinished, permissionDenied]);
+  }, [isFinished, permissionDenied, screenPermissionDenied]);
 
   // Tab switching prevention and Auto-Submit
   useEffect(() => {
@@ -208,7 +226,7 @@ const Exam: React.FC = () => {
 
   // Face detection warning and Auto-Submit
   useEffect(() => {
-    if (isFinished || permissionDenied || !cameraStream) return;
+    if (isFinished || permissionDenied || screenPermissionDenied || !cameraStream) return;
 
     if (!isFaceDetected) {
       // If face goes missing for 4 continuous seconds
@@ -240,7 +258,7 @@ const Exam: React.FC = () => {
     return () => {
       if (faceMissingTimerRef.current) clearTimeout(faceMissingTimerRef.current);
     }
-  }, [isFaceDetected, isFinished, permissionDenied, cameraStream]);
+  }, [isFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream]);
 
   // Mouse leave tracking (Auto-Submit after 30s)
   useEffect(() => {
@@ -271,8 +289,14 @@ const Exam: React.FC = () => {
       }
     };
     
-    const handleBlur = () => triggerMouseLeaveTimer();
-    const handleFocus = () => handleMouseEnter();
+    const handleBlur = () => {
+      setIsBlurred(true);
+      triggerMouseLeaveTimer();
+    };
+    const handleFocus = () => {
+      setIsBlurred(false);
+      handleMouseEnter();
+    };
 
     document.addEventListener('mouseleave', handleMouseLeave);
     document.addEventListener('mouseenter', handleMouseEnter);
@@ -334,14 +358,14 @@ const Exam: React.FC = () => {
   };
 
   // ---- Permission denied screen ----
-  if (permissionDenied) {
+  if (permissionDenied || screenPermissionDenied) {
     return (
       <div className="flex-center full-screen bg-light">
         <div className="card text-center max-w-sm">
           <AlertTriangle size={48} style={{ color: 'var(--error-color)', margin: '0 auto 1rem' }} />
-          <h2 className="mb-2">Permission Required</h2>
+          <h2 className="mb-2">Permissions Required</h2>
           <p className="text-muted mb-4">
-            You must allow camera access to take this exam. Please enable permissions in your browser and reload.
+            You must allow both camera and ENTIRE SCREEN sharing access to take this exam. Please enable permissions in your browser and reload. Be sure to select "Entire Screen".
           </p>
           <button onClick={() => window.location.reload()} className="btn btn-primary">Try Again</button>
         </div>
@@ -485,9 +509,9 @@ const Exam: React.FC = () => {
 
   // ---- Exam screen ----
   return (
-    <div className="exam-layout bg-light no-select" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
+    <div className={`exam-layout bg-light no-select ${isBlurred ? 'blurred-view' : ''}`} style={{ userSelect: 'none', WebkitUserSelect: 'none', filter: isBlurred ? 'blur(10px)' : 'none', transition: 'filter 0.1s ease-in-out' }}>
       
-      {!isFullscreen && !isFinished && !permissionDenied && (
+      {!isFullscreen && !isFinished && !permissionDenied && !screenPermissionDenied && (
         <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
           <div className="card text-center shadow-lg border-2" style={{ maxWidth: '400px', borderColor: 'var(--error-color)' }}>
             <AlertTriangle size={48} className="icon-warning mx-auto mb-4" color="var(--error-color)" />
@@ -622,11 +646,15 @@ const Exam: React.FC = () => {
         </div>
       </main>
 
-      {!isFinished && !permissionDenied && (
+      {!isFinished && !permissionDenied && !screenPermissionDenied && (
         <>
           <CameraRecorder
             onPermissionDenied={handlePermissionDenied}
             onStream={setCameraStream}
+          />
+          <ScreenRecorder
+            onPermissionDenied={handleScreenPermissionDenied}
+            onStreamStop={handleScreenStreamStop}
           />
           <CameraPopup stream={cameraStream} />
         </>
