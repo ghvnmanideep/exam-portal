@@ -1,13 +1,29 @@
 import React, { useEffect, useRef } from 'react';
 
+/**
+ * Props for the ScreenRecorder component.
+ */
 interface ScreenRecorderProps {
+  /** Called when the user dismisses the screen recording permission prompt or selects an invalid screen surface. */
   onPermissionDenied: () => void;
+  /** Called if the active screen sharing stream is unexpectedly stopped. */
   onStreamStop?: () => void;
+  /** Fired when the "Entire Screen" has been successfully verified and is streaming. */
+  onReady?: () => void;
 }
 
+/** 
+ * Interval at which a silent screenshot of the screen is captured and stored. 
+ */
 const CAPTURE_INTERVAL_MS = 10000; // 10 seconds
 
-const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onStreamStop }) => {
+/**
+ * ScreenRecorder Component
+ * 
+ * A background component designed to capture the user's screen at a fixed interval.
+ * It enforces proper exam conditions by verifying that the user selects the "Entire Screen" option.
+ */
+const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onStreamStop, onReady }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -47,6 +63,10 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
 
         video.srcObject = stream;
 
+        if (active && onReady) {
+          onReady();
+        }
+
         if (videoTrack) {
           videoTrack.addEventListener('ended', () => {
             if (active && onStreamStop) {
@@ -79,6 +99,9 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
     };
   }, [onPermissionDenied, onStreamStop]);
 
+  /**
+   * Captures the current frame of the hidden video element and pushes it to local storage.
+   */
   const captureImage = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -103,6 +126,11 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
     saveImage(dataUrl);
   };
 
+  /**
+   * Parses the stringified base64 image and saves it securely along with a timestamp to localStorage.
+   * 
+   * @param base64Image The image raw representation.
+   */
   const saveImage = (base64Image: string) => {
     try {
       const existing = JSON.parse(localStorage.getItem('examScreenCaptures') || '[]');

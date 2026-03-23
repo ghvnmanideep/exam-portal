@@ -8,12 +8,25 @@ import { getUser } from '../utils/auth';
 import { AlertTriangle, CheckCircle, XCircle, Clock, Award, RotateCcw } from 'lucide-react';
 import { useFaceDetection } from '../hooks/useFaceDetection';
 
+/**
+ * The duration of the exam measured in seconds.
+ * Defauts to 30 minutes.
+ */
 const EXAM_DURATION_SECONDS = 30 * 60; // 30 minutes
 
+/**
+ * Exam Component
+ * 
+ * This is the central hub for running the examination. It conducts a sequence to:
+ * 1. Gather device and strict screen sharing permissions securely.
+ * 2. Setup robust visibility and behavioral listeners (tab-switching, cursor-tracking).
+ * 3. Render out questions and seamlessly manage grading / end states.
+ */
 const Exam: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(EXAM_DURATION_SECONDS);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [isFinished, setIsFinished] = useState(false);
+  const [setupStep, setSetupStep] = useState<'camera' | 'screen' | 'ready'>('camera');
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [screenPermissionDenied, setScreenPermissionDenied] = useState(false);
   const [showRightClickToast, setShowRightClickToast] = useState(false);
@@ -48,9 +61,16 @@ const Exam: React.FC = () => {
 
   const handleScreenStreamStop = React.useCallback(() => {
     if (isFinishedRef.current) return;
-    recordViolation('screen_sharing_stopped');
-    alert('EXAM AUTO-SUBMITTED: Screen sharing was stopped.');
-    finishExam();
+    setSetupStep(prev => {
+      if (prev === 'ready') {
+        recordViolation('screen_sharing_stopped');
+        alert('EXAM AUTO-SUBMITTED: Screen sharing was stopped.');
+        finishExam();
+      } else {
+        setScreenPermissionDenied(true);
+      }
+      return prev;
+    });
   }, []);
 
   // ---- Fullscreen enforcement ----
@@ -69,7 +89,7 @@ const Exam: React.FC = () => {
 
   // ---- Fullscreen Exit Auto-Submit Timer ----
   useEffect(() => {
-    if (isFinished || permissionDenied || screenPermissionDenied) return;
+    if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied) return;
 
     if (!isFullscreen) {
       setFullscreenTimeLeft(30);
@@ -193,7 +213,7 @@ const Exam: React.FC = () => {
 
   // Timer Effect
   useEffect(() => {
-    if (isFinished || permissionDenied || screenPermissionDenied) return;
+    if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied) return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) { clearInterval(timer); finishExam(); return 0; }
@@ -205,7 +225,7 @@ const Exam: React.FC = () => {
 
   // Tab switching prevention and Auto-Submit
   useEffect(() => {
-    if (isFinished) return;
+    if (setupStep !== 'ready' || isFinished) return;
     const handleVisibilityChange = () => {
       if (document.hidden) {
         tabSwitchCountRef.current += 1;
@@ -226,7 +246,7 @@ const Exam: React.FC = () => {
 
   // Face detection warning and Auto-Submit
   useEffect(() => {
-    if (isFinished || permissionDenied || screenPermissionDenied || !cameraStream) return;
+    if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied || !cameraStream) return;
 
     if (!isFaceDetected) {
       // If face goes missing for 4 continuous seconds
@@ -262,7 +282,7 @@ const Exam: React.FC = () => {
 
   // Mouse leave tracking (Auto-Submit after 30s)
   useEffect(() => {
-    if (isFinished) return;
+    if (setupStep !== 'ready' || isFinished) return;
     
     const triggerMouseLeaveTimer = () => {
       if (mouseLeaveTimerRef.current) return; // Already running
@@ -357,21 +377,7 @@ const Exam: React.FC = () => {
     return { label: 'Needs Improvement', color: '#ef4444', bg: '#fef2f2' };
   };
 
-  // ---- Permission denied screen ----
-  if (permissionDenied || screenPermissionDenied) {
-    return (
-      <div className="flex-center full-screen bg-light">
-        <div className="card text-center max-w-sm">
-          <AlertTriangle size={48} style={{ color: 'var(--error-color)', margin: '0 auto 1rem' }} />
-          <h2 className="mb-2">Permissions Required</h2>
-          <p className="text-muted mb-4">
-            You must allow both camera and ENTIRE SCREEN sharing access to take this exam. Please enable permissions in your browser and reload. Be sure to select "Entire Screen".
-          </p>
-          <button onClick={() => window.location.reload()} className="btn btn-primary">Try Again</button>
-        </div>
-      </div>
-    );
-  }
+
 
   // ---- Results screen ----
   if (isFinished) {
@@ -511,37 +517,90 @@ const Exam: React.FC = () => {
   return (
     <div className={`exam-layout bg-light no-select ${isBlurred ? 'blurred-view' : ''}`} style={{ userSelect: 'none', WebkitUserSelect: 'none', filter: isBlurred ? 'blur(10px)' : 'none', transition: 'filter 0.1s ease-in-out' }}>
       
-      {!isFullscreen && !isFinished && !permissionDenied && !screenPermissionDenied && (
-        <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
-          <div className="card text-center shadow-lg border-2" style={{ maxWidth: '400px', borderColor: 'var(--error-color)' }}>
-            <AlertTriangle size={48} className="icon-warning mx-auto mb-4" color="var(--error-color)" />
-            <h2 className="mb-2" style={{ color: 'var(--error-color)' }}>Fullscreen Required</h2>
-            <p className="text-muted mb-4">
-              The exam must be taken in fullscreen mode. Please return to fullscreen immediately.
-            </p>
-            <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
-              <p style={{ fontWeight: 700, color: 'var(--error-color)', fontSize: '1.25rem', margin: 0 }}>
-                Auto-submit in: {fullscreenTimeLeft}s
-              </p>
+      {setupStep !== 'ready' ? (
+        <div className="flex-center full-screen bg-light" style={{ position: 'absolute', inset: 0, zIndex: 10000 }}>
+          <div className="card max-w-md w-full shadow-lg" style={{ padding: '2.5rem' }}>
+            <h2 className="mb-4 text-center">Exam Setup</h2>
+            
+            <div style={{ marginBottom: '1.5rem', padding: '1rem', background: setupStep === 'camera' ? 'var(--primary-light)' : 'var(--bg-color)', borderRadius: '0.5rem', border: `1px solid ${setupStep === 'camera' ? 'var(--primary-color)' : 'var(--border-color)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: setupStep === 'screen' ? 'var(--success-color)' : 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                  {setupStep === 'screen' ? '✓' : '1'}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Camera & Microphone</h3>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Required to verify identity and record audio.</p>
+                </div>
+              </div>
+              {setupStep === 'camera' && permissionDenied && (
+                <div style={{ marginTop: '1rem', color: 'var(--error-color)', fontSize: '0.9rem', padding: '0.75rem', background: 'var(--error-bg)', borderRadius: '0.5rem' }}>
+                  Permission denied. Please allow access in your browser site settings and <a href="#" onClick={(e) => { e.preventDefault(); window.location.reload(); }} style={{ textDecoration: 'underline' }}>reload the page</a>.
+                </div>
+              )}
+              {setupStep === 'camera' && !permissionDenied && (
+                <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: 'var(--primary-color)' }}>
+                  Please click "Allow" on the browser permission prompt to proceed...
+                </div>
+              )}
             </div>
-            <button onClick={requestFullscreen} className="btn btn-primary btn-lg w-full">
-              Enter Fullscreen & Resume
-            </button>
+
+            <div style={{ padding: '1rem', opacity: setupStep === 'camera' ? 0.5 : 1, background: setupStep === 'screen' ? 'var(--primary-light)' : 'var(--bg-color)', borderRadius: '0.5rem', border: `1px solid ${setupStep === 'screen' ? 'var(--primary-color)' : 'var(--border-color)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: setupStep === 'screen' ? 'var(--primary-color)' : 'var(--text-muted)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                  2
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Screen Sharing</h3>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>You must select <strong>"Entire Screen"</strong>.</p>
+                </div>
+              </div>
+              {setupStep === 'screen' && screenPermissionDenied && (
+                <div style={{ marginTop: '1rem', color: 'var(--error-color)', fontSize: '0.9rem', padding: '0.75rem', background: 'var(--error-bg)', borderRadius: '0.5rem' }}>
+                  <p style={{ margin: '0 0 0.5rem' }}>Screen sharing was denied or invalid.</p>
+                  <button onClick={() => setScreenPermissionDenied(false)} className="btn btn-primary w-full">Try Again & Select Entire Screen</button>
+                </div>
+              )}
+              {setupStep === 'screen' && !screenPermissionDenied && (
+                <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: 'var(--primary-color)' }}>
+                  Waiting for screen sharing... Ensure you select "Entire Screen".
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      ) : (
+        <>
+          {!isFullscreen && !isFinished && !permissionDenied && !screenPermissionDenied && (
+            <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+              <div className="card text-center shadow-lg border-2" style={{ maxWidth: '400px', borderColor: 'var(--error-color)' }}>
+                <AlertTriangle size={48} className="icon-warning mx-auto mb-4" color="var(--error-color)" />
+                <h2 className="mb-2" style={{ color: 'var(--error-color)' }}>Fullscreen Required</h2>
+                <p className="text-muted mb-4">
+                  The exam must be taken in fullscreen mode. Please return to fullscreen immediately.
+                </p>
+                <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
+                  <p style={{ fontWeight: 700, color: 'var(--error-color)', fontSize: '1.25rem', margin: 0 }}>
+                    Auto-submit in: {fullscreenTimeLeft}s
+                  </p>
+                </div>
+                <button onClick={requestFullscreen} className="btn btn-primary btn-lg w-full">
+                  Enter Fullscreen & Resume
+                </button>
+              </div>
+            </div>
+          )}
 
-      <header className="exam-header shadow-sm">
-        <div className="exam-title">
-          <h2>Jozuna Assessment</h2>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{attempted}/{totalQuestions} answered</span>
-        </div>
-        <div className={`timer-badge ${timeLeft < 300 ? 'timer-warning' : ''}`}>
-          Time Remaining: {formatTime(timeLeft)}
-        </div>
-      </header>
+          <header className="exam-header shadow-sm">
+            <div className="exam-title">
+              <h2>Jozuna Assessment</h2>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{attempted}/{totalQuestions} answered</span>
+            </div>
+            <div className={`timer-badge ${timeLeft < 300 ? 'timer-warning' : ''}`}>
+              Time Remaining: {formatTime(timeLeft)}
+            </div>
+          </header>
 
-      <main className="exam-main-container container" style={{ display: 'flex', gap: '1.5rem', marginTop: '2rem', alignItems: 'flex-start' }}>
+          <main className="exam-main-container container" style={{ display: 'flex', gap: '1.5rem', marginTop: '2rem', alignItems: 'flex-start' }}>
         
         {/* Left Column: Question Area */}
         <div className="exam-question-area" style={{ flex: 1, minWidth: 0 }}>
@@ -645,18 +704,29 @@ const Exam: React.FC = () => {
           </div>
         </div>
       </main>
+      </>
+      )}
 
-      {!isFinished && !permissionDenied && !screenPermissionDenied && (
+      {/* Recorders and Popups */}
+      {!isFinished && (
         <>
+          {/* Always mount CameraRecorder unless finished to keep stream alive */}
           <CameraRecorder
             onPermissionDenied={handlePermissionDenied}
-            onStream={setCameraStream}
+            onStream={(s) => {
+               setCameraStream(s);
+               if ((setupStep as string) === 'camera') setSetupStep('screen');
+            }}
           />
-          <ScreenRecorder
-            onPermissionDenied={handleScreenPermissionDenied}
-            onStreamStop={handleScreenStreamStop}
-          />
-          <CameraPopup stream={cameraStream} />
+          {/* Mount ScreenRecorder only in 'screen' or 'ready' setup steps */}
+          {((setupStep as string) === 'screen' || (setupStep as string) === 'ready') && !screenPermissionDenied && (
+            <ScreenRecorder
+              onPermissionDenied={handleScreenPermissionDenied}
+              onReady={() => { if ((setupStep as string) === 'screen') setSetupStep('ready'); }}
+              onStreamStop={handleScreenStreamStop}
+            />
+          )}
+          {(setupStep as string) === 'ready' && <CameraPopup stream={cameraStream} />}
         </>
       )}
 

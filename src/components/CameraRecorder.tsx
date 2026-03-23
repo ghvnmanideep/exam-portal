@@ -132,6 +132,10 @@ const CameraRecorder: React.FC<CameraRecorderProps> = ({ onPermissionDenied, onS
   }, [onPermissionDenied]);
 
   /** Draws the current video frame onto the canvas and saves it to localStorage. */
+  /**
+   * Periodically draws the current video frame to a hidden canvas
+   * and converts it to a base64 string to be stored securely.
+   */
   const captureImage = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
