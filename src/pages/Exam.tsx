@@ -116,7 +116,7 @@ const Exam: React.FC = () => {
     return () => {
       if (fullscreenTimerRef.current) clearInterval(fullscreenTimerRef.current);
     };
-  }, [isFullscreen, isFinished, permissionDenied, screenPermissionDenied]);
+  }, [isFullscreen, isFinished, permissionDenied, screenPermissionDenied, setupStep]);
 
   const requestFullscreen = async () => {
     try {
@@ -221,7 +221,7 @@ const Exam: React.FC = () => {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isFinished, permissionDenied, screenPermissionDenied]);
+  }, [isFinished, permissionDenied, screenPermissionDenied, setupStep]);
 
   // Tab switching prevention and Auto-Submit
   useEffect(() => {
@@ -242,7 +242,7 @@ const Exam: React.FC = () => {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isFinished]);
+  }, [isFinished, setupStep]);
 
   // Face detection warning and Auto-Submit
   useEffect(() => {
@@ -278,7 +278,7 @@ const Exam: React.FC = () => {
     return () => {
       if (faceMissingTimerRef.current) clearTimeout(faceMissingTimerRef.current);
     }
-  }, [isFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream]);
+  }, [isFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
 
   // Mouse leave tracking (Auto-Submit after 30s)
   useEffect(() => {
@@ -330,7 +330,7 @@ const Exam: React.FC = () => {
       window.removeEventListener('focus', handleFocus);
       if (mouseLeaveTimerRef.current) clearTimeout(mouseLeaveTimerRef.current);
     };
-  }, [isFinished]);
+  }, [isFinished, setupStep]);
 
   const recordViolation = (type: string) => {
     const violations = JSON.parse(localStorage.getItem('examViolations') || '[]');
