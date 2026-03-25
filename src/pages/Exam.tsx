@@ -614,16 +614,7 @@ const Exam: React.FC = () => {
   const showOverlay = (!isFullscreen || isBlurred) && setupStep === 'ready' && !isFinished;
 
   return (
-    <div 
-      className={`exam-layout bg-light no-select ${showOverlay ? 'blurred-view' : ''}`} 
-      style={{ 
-        userSelect: 'none', 
-        WebkitUserSelect: 'none', 
-        filter: showOverlay ? 'blur(15px)' : 'none', 
-        pointerEvents: showOverlay ? 'none' : 'auto',
-        transition: 'filter 0.2s ease-in-out' 
-      }}
-    >
+    <div className={`exam-layout bg-light no-select ${showOverlay ? 'layout-blurred' : ''}`} style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
       
       {setupStep !== 'ready' ? (
         <div className="flex-center full-screen bg-light" style={{ position: 'absolute', inset: 0, zIndex: 10000 }}>
@@ -717,7 +708,7 @@ const Exam: React.FC = () => {
       ) : (
         <>
           {showViolationWarning && (
-            <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+            <div className="fullscreen-overlay z-[10001]" style={{ background: 'rgba(0,0,0,0.85)' }}>
               <div className="card text-center shadow-lg border-2" style={{ maxWidth: '450px', borderColor: 'var(--error-color)' }}>
                 <AlertTriangle size={64} className="mx-auto mb-4" color="var(--error-color)" />
                 <h2 className="mb-2" style={{ color: 'var(--error-color)', fontSize: '1.75rem' }}>Security Violation</h2>
@@ -737,7 +728,7 @@ const Exam: React.FC = () => {
           )}
 
           {!isFullscreen && setupStep === 'ready' && !isMobileDevice && !isFinished && !permissionDenied && !screenPermissionDenied && (
-            <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+            <div className="fullscreen-overlay z-[10000]" style={{ background: 'rgba(0,0,0,0.85)' }}>
               <div className="card text-center shadow-lg border-2" style={{ maxWidth: '400px', borderColor: 'var(--error-color)' }}>
                 <AlertTriangle size={48} className="icon-warning mx-auto mb-4" color="var(--error-color)" />
                 <h2 className="mb-2" style={{ color: 'var(--error-color)' }}>Fullscreen Required</h2>
@@ -756,17 +747,27 @@ const Exam: React.FC = () => {
             </div>
           )}
 
-          <header className="exam-header shadow-sm">
-            <div className="exam-title">
-              <h2>Jozuna Assessment</h2>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{attempted}/{totalQuestions} answered</span>
-            </div>
-            <div className={`timer-badge ${timeLeft < 300 ? 'timer-warning' : ''}`}>
-              Time Remaining: {formatTime(timeLeft)}
-            </div>
-          </header>
+          <div 
+            style={{ 
+              filter: showOverlay ? 'blur(15px)' : 'none', 
+              pointerEvents: showOverlay ? 'none' : 'auto',
+              transition: 'filter 0.2s ease-in-out',
+              minHeight: '100vh',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            <header className="exam-header shadow-sm">
+              <div className="exam-title">
+                <h2>Jozuna Assessment</h2>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{attempted}/{totalQuestions} answered</span>
+              </div>
+              <div className={`timer-badge ${timeLeft < 300 ? 'timer-warning' : ''}`}>
+                Time Remaining: {formatTime(timeLeft)}
+              </div>
+            </header>
 
-          <main className="exam-main-container container" style={{ display: 'flex', gap: '1.5rem', marginTop: '2rem', alignItems: 'flex-start' }}>
+            <main className="exam-main-container container" style={{ display: 'flex', gap: '1.5rem', marginTop: '2rem', alignItems: 'flex-start', flex: 1 }}>
         
         {/* Left Column: Question Area */}
         <div className="exam-question-area" style={{ flex: 1, minWidth: 0 }}>
@@ -870,7 +871,8 @@ const Exam: React.FC = () => {
           </div>
         </div>
       </main>
-      </>
+          </div>
+        </>
       )}
 
       {/* Recorders and Popups */}
