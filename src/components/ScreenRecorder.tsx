@@ -38,13 +38,26 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
 
     const startScreenShare = async () => {
       try {
+        // --- MOBILE/UNSUPPORTED FALLBACK ---
+        // 'getDisplayMedia' is not supported on mobile browsers (iOS Safari, Android Chrome).
+        // If the user is on mobile, we gracefully bypass screen recording so they can take the exam.
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+          console.warn('Screen sharing is not supported on this device. Bypassing screen record step.');
+          if (active && onReady) {
+            onReady();
+          }
+          return;
+        }
+        // -----------------------------------
+
         if (!globalScreenStreamPromise) {
           globalScreenStreamPromise = navigator.mediaDevices.getDisplayMedia({
             video: { displaySurface: 'monitor' },
             audio: false,
           });
         }
-        
+
         const stream = await globalScreenStreamPromise;
 
         if (!active) {
@@ -52,7 +65,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
         }
 
         const videoTrack = stream.getVideoTracks()[0];
-        
+
         // Strict check to ensure the user shared the entire screen
         const settings = videoTrack.getSettings();
         if (settings.displaySurface && settings.displaySurface !== 'monitor') {
@@ -76,8 +89,8 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
 
         if (videoTrack) {
           const handleEnded = () => {
-             globalScreenStreamPromise = null;
-             if (active && onStreamStop) onStreamStop();
+            globalScreenStreamPromise = null;
+            if (active && onStreamStop) onStreamStop();
           };
           videoTrack.addEventListener('ended', handleEnded);
         }
@@ -104,13 +117,13 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
       active = false;
       activeRecorders--;
       if (intervalRef.current) clearInterval(intervalRef.current);
-      
+
       // Delay stopping the stream to allow React 18 Strict Mode remount
       setTimeout(() => {
-         if (activeRecorders === 0 && globalScreenStreamPromise) {
-            globalScreenStreamPromise.then((s) => s.getTracks().forEach((t) => t.stop())).catch(() => {});
-            globalScreenStreamPromise = null;
-         }
+        if (activeRecorders === 0 && globalScreenStreamPromise) {
+          globalScreenStreamPromise.then((s) => s.getTracks().forEach((t) => t.stop())).catch(() => { });
+          globalScreenStreamPromise = null;
+        }
       }, 500);
     };
   }, [onPermissionDenied, onStreamStop]);

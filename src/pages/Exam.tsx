@@ -14,6 +14,8 @@ import { useFaceDetection } from '../hooks/useFaceDetection';
  */
 const EXAM_DURATION_SECONDS = 30 * 60; // 30 minutes
 
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 /**
  * Exam Component
  * 
@@ -91,7 +93,7 @@ const Exam: React.FC = () => {
   useEffect(() => {
     if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied) return;
 
-    if (!isFullscreen) {
+    if (!isFullscreen && !isMobileDevice) {
       setFullscreenTimeLeft(30);
       fullscreenTimerRef.current = setInterval(() => {
         setFullscreenTimeLeft((prev) => {
@@ -570,7 +572,7 @@ const Exam: React.FC = () => {
         </div>
       ) : (
         <>
-          {!isFullscreen && !isFinished && !permissionDenied && !screenPermissionDenied && (
+          {!isFullscreen && !isMobileDevice && !isFinished && !permissionDenied && !screenPermissionDenied && (
             <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
               <div className="card text-center shadow-lg border-2" style={{ maxWidth: '400px', borderColor: 'var(--error-color)' }}>
                 <AlertTriangle size={48} className="icon-warning mx-auto mb-4" color="var(--error-color)" />
