@@ -28,7 +28,9 @@ const Exam: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(EXAM_DURATION_SECONDS);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [isFinished, setIsFinished] = useState(false);
-  const [setupStep, setSetupStep] = useState<'camera' | 'screen' | 'ready'>('camera');
+  const [setupStep, setSetupStep] = useState<'start' | 'camera' | 'screen' | 'ready_to_start' | 'ready'>('start');
+  const [isCameraStarted, setIsCameraStarted] = useState(false);
+  const [isScreenStarted, setIsScreenStarted] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [screenPermissionDenied, setScreenPermissionDenied] = useState(false);
   const [showRightClickToast, setShowRightClickToast] = useState(false);
@@ -40,6 +42,8 @@ const Exam: React.FC = () => {
   const [showFaceWarning, setShowFaceWarning] = useState(false);
   const [fullscreenTimeLeft, setFullscreenTimeLeft] = useState(30);
   const [isBlurred, setIsBlurred] = useState(false);
+  const [shortcutViolationCount, setShortcutViolationCount] = useState(0);
+  const [showViolationWarning, setShowViolationWarning] = useState(false);
   
   const isFaceDetected = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
@@ -122,13 +126,32 @@ const Exam: React.FC = () => {
 
   const requestFullscreen = async () => {
     try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
+      const element = document.documentElement;
+      if (element.requestFullscreen) {
+        await element.requestFullscreen();
+      } else if ((element as any).webkitRequestFullscreen) {
+        await (element as any).webkitRequestFullscreen();
+      } else if ((element as any).msRequestFullscreen) {
+        await (element as any).msRequestFullscreen();
       }
+      setIsFullscreen(true);
     } catch (err) {
       console.warn('Fullscreen request failed:', err);
     }
+  };
+
+  const startCameraSetup = () => {
+    setIsCameraStarted(true);
+    setSetupStep('camera');
+  };
+
+  const startScreenSetup = () => {
+    setIsScreenStarted(true);
+  };
+
+  const startExam = async () => {
+    await requestFullscreen();
+    setSetupStep('ready');
   };
 
   // ---- Disable right-click + show toast ----
@@ -136,69 +159,85 @@ const Exam: React.FC = () => {
     const disableContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       setShowRightClickToast(true);
-      // Clear any existing timer and start a new one
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       toastTimerRef.current = setTimeout(() => setShowRightClickToast(false), 3000);
     };
     document.addEventListener('contextmenu', disableContextMenu);
+
+    // Block printing
+    const handleBeforePrint = (e: Event) => {
+      e.preventDefault();
+      alert('Printing is strictly prohibited during the exam.');
+      recordViolation('print_attempt');
+    };
+    window.addEventListener('beforeprint', handleBeforePrint);
+
     return () => {
       document.removeEventListener('contextmenu', disableContextMenu);
+      window.removeEventListener('beforeprint', handleBeforePrint);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
 
-  // ---- Block Screenshots / Keyboard Shortcuts ----
+  // ---- Block Shortcuts / Keyboard / Clipboard ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Common screenshot and print shortcuts:
-      // - PrintScreen key
-      // - Ctrl+P or Cmd+P (Print)
-      // - Cmd+Shift+3 / 4 / 5 (Mac screenshot)
-      // - Win+Shift+S (Windows snipping tool - note: Meta key is often not fully preventable in browsers but we try)
-      // - Web dev tools (F12, Ctrl+Shift+I)
-      const isMacScreenshot = e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5');
-      const isWinSnipping = e.metaKey && e.shiftKey && (e.key === 's' || e.key === 'S');
-      const isPrint = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P');
-      const isPrintScreen = e.key === 'PrintScreen';
-      const isDevTools = e.key === 'F12' || ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'i' || e.key === 'I'));
+      const ctrlOrMeta = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
 
-      if (isPrintScreen || isMacScreenshot || isWinSnipping || isPrint || isDevTools) {
+      // Block common shortcuts
+      const isCopyPaste = ctrlOrMeta && (key === 'c' || key === 'v' || key === 'x');
+      const isPrint = ctrlOrMeta && key === 'p';
+      const isSave = ctrlOrMeta && key === 's';
+      const isViewSource = ctrlOrMeta && key === 'u';
+      const isSelectAll = ctrlOrMeta && key === 'a';
+      const isFind = ctrlOrMeta && key === 'f';
+      const isDevTools = e.key === 'F12' || (ctrlOrMeta && e.shiftKey && (key === 'i' || key === 'j' || key === 'c'));
+      const isPrintScreen = e.key === 'PrintScreen';
+      
+      // Mac specific screenshot shortcuts
+      const isMacScreenshot = e.metaKey && e.shiftKey && (key === '3' || key === '4' || key === '5');
+      // Windows Snipping
+      const isWinSnipping = e.metaKey && e.shiftKey && key === 's';
+
+      if (isCopyPaste || isPrint || isSave || isViewSource || isSelectAll || isFind || isDevTools || isPrintScreen || isMacScreenshot || isWinSnipping) {
         e.preventDefault();
+        e.stopPropagation();
         
-        // Show screenshot warning toast
-        setShowScreenshotToast(false);
+        setShowScreenshotToast(true);
         if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
         screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
         
-        // Record violation optionally
-        recordViolation('screenshot_attempt');
+        handleShortcutViolation(isPrintScreen || isMacScreenshot || isWinSnipping ? 'screenshot' : `shortcut_${key}`);
+        
+        if (isPrintScreen || isMacScreenshot || isWinSnipping) {
+          navigator.clipboard.writeText(''); // Clear clipboard
+        }
       }
     };
 
-    // Use capturing phase to intercept before other listeners
     window.addEventListener('keydown', handleKeyDown, true);
     
-    // Also try to clear clipboard on copy/cut/paste attempt as a fallback
     const handleClipboard = (e: ClipboardEvent) => {
       e.preventDefault();
       setShowScreenshotToast(true);
       if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
       screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
-      recordViolation(`${e.type}_attempt`);
+      handleShortcutViolation(`${e.type}_attempt`);
     };
+
     window.addEventListener('copy', handleClipboard, true);
     window.addEventListener('cut', handleClipboard, true);
     window.addEventListener('paste', handleClipboard, true);
 
-    // Prevent 'keyup' PrintScreen as well (sometimes only keyup registers for PrintScreen)
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'PrintScreen') {
         e.preventDefault();
-        navigator.clipboard.writeText(''); // Attempt to clear clipboard
+        navigator.clipboard.writeText('');
         setShowScreenshotToast(true);
         if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
         screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
-        recordViolation('screenshot_attempt');
+        handleShortcutViolation('screenshot_attempt');
       }
     };
     window.addEventListener('keyup', handleKeyUp, true);
@@ -212,6 +251,48 @@ const Exam: React.FC = () => {
       if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
     };
   }, []);
+  useEffect(() => {
+    if (setupStep !== 'ready' || isFinished) return;
+    
+    const clearClipboard = async () => {
+      try {
+        // Attempt to clear the clipboard
+        await navigator.clipboard.writeText(' ');
+      } catch (err) {
+        // Fails silently if window is blurred, which is expected
+      }
+    };
+
+    // Periodically clear clipboard every 5 seconds
+    const interval = setInterval(clearClipboard, 5000);
+    
+    const handleFocusLoss = () => {
+      setIsBlurred(true);
+      clearClipboard();
+    };
+
+    const handleFocusGain = () => {
+      setIsBlurred(false);
+      clearClipboard();
+    };
+
+    window.addEventListener('blur', handleFocusLoss);
+    window.addEventListener('focus', handleFocusGain);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        handleFocusLoss();
+        clearClipboard();
+      } else {
+        handleFocusGain();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('blur', handleFocusLoss);
+      window.removeEventListener('focus', handleFocusGain);
+    };
+  }, [setupStep, isFinished]);
 
   // Timer Effect
   useEffect(() => {
@@ -340,10 +421,6 @@ const Exam: React.FC = () => {
     localStorage.setItem('examViolations', JSON.stringify(violations));
   };
 
-  const handleOptionSelect = (questionId: number, optionIndex: number) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
-  };
-
   const finishExam = () => {
     isFinishedRef.current = true;
     setIsFinished(true);
@@ -356,6 +433,24 @@ const Exam: React.FC = () => {
       timestamp: new Date().toISOString(),
       answers
     }));
+  };
+
+  const handleOptionSelect = (questionId: number, optionIndex: number) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
+  };
+
+  const handleShortcutViolation = (type: string) => {
+    recordViolation(type);
+    setShortcutViolationCount(prev => {
+      const newCount = prev + 1;
+      if (newCount >= 2) {
+        alert('EXAM AUTO-SUBMITTED: Forbidden shortcut/screenshot detected multiple times.');
+        finishExam();
+      } else {
+        setShowViolationWarning(true);
+      }
+      return newCount;
+    });
   };
 
   const formatTime = (seconds: number) => {
@@ -516,63 +611,132 @@ const Exam: React.FC = () => {
   }
 
   // ---- Exam screen ----
+  const showOverlay = (!isFullscreen || isBlurred) && setupStep === 'ready' && !isFinished;
+
   return (
-    <div className={`exam-layout bg-light no-select ${isBlurred ? 'blurred-view' : ''}`} style={{ userSelect: 'none', WebkitUserSelect: 'none', filter: isBlurred ? 'blur(10px)' : 'none', transition: 'filter 0.1s ease-in-out' }}>
+    <div 
+      className={`exam-layout bg-light no-select ${showOverlay ? 'blurred-view' : ''}`} 
+      style={{ 
+        userSelect: 'none', 
+        WebkitUserSelect: 'none', 
+        filter: showOverlay ? 'blur(15px)' : 'none', 
+        pointerEvents: showOverlay ? 'none' : 'auto',
+        transition: 'filter 0.2s ease-in-out' 
+      }}
+    >
       
       {setupStep !== 'ready' ? (
         <div className="flex-center full-screen bg-light" style={{ position: 'absolute', inset: 0, zIndex: 10000 }}>
           <div className="card max-w-md w-full shadow-lg" style={{ padding: '2.5rem' }}>
             <h2 className="mb-4 text-center">Exam Setup</h2>
             
-            <div style={{ marginBottom: '1.5rem', padding: '1rem', background: setupStep === 'camera' ? 'var(--primary-light)' : 'var(--bg-color)', borderRadius: '0.5rem', border: `1px solid ${setupStep === 'camera' ? 'var(--primary-color)' : 'var(--border-color)'}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: setupStep === 'screen' ? 'var(--success-color)' : 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                  {setupStep === 'screen' ? '✓' : '1'}
+            {setupStep === 'start' && (
+              <div style={{ textAlign: 'center' }}>
+                <div className="icon-circle lg-icon-circle icon-primary" style={{ background: 'var(--primary-light)', marginBottom: '1.5rem' }}>
+                  <Award size={40} />
                 </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Camera & Microphone</h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Required to verify identity and record audio.</p>
-                </div>
+                <p className="text-muted mb-6">
+                  Before starting the exam, you must grant camera and screen sharing permissions.
+                  The exam will be conducted in <strong>fullscreen mode</strong> for proctoring purposes.
+                </p>
+                <button onClick={startCameraSetup} className="btn btn-primary btn-lg w-full">
+                  Start Exam Setup
+                </button>
               </div>
-              {setupStep === 'camera' && permissionDenied && (
-                <div style={{ marginTop: '1rem', color: 'var(--error-color)', fontSize: '0.9rem', padding: '0.75rem', background: 'var(--error-bg)', borderRadius: '0.5rem' }}>
-                  Permission denied. Please allow access in your browser site settings and <a href="#" onClick={(e) => { e.preventDefault(); window.location.reload(); }} style={{ textDecoration: 'underline' }}>reload the page</a>.
-                </div>
-              )}
-              {setupStep === 'camera' && !permissionDenied && (
-                <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: 'var(--primary-color)' }}>
-                  Please click "Allow" on the browser permission prompt to proceed...
-                </div>
-              )}
-            </div>
+            )}
 
-            <div style={{ padding: '1rem', opacity: setupStep === 'camera' ? 0.5 : 1, background: setupStep === 'screen' ? 'var(--primary-light)' : 'var(--bg-color)', borderRadius: '0.5rem', border: `1px solid ${setupStep === 'screen' ? 'var(--primary-color)' : 'var(--border-color)'}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: setupStep === 'screen' ? 'var(--primary-color)' : 'var(--text-muted)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                  2
+            {setupStep !== 'start' && (
+              <>
+                <div style={{ marginBottom: '1.5rem', padding: '1rem', background: setupStep === 'camera' ? 'var(--primary-light)' : 'var(--bg-color)', borderRadius: '0.5rem', border: `1px solid ${setupStep === 'camera' ? 'var(--primary-color)' : 'var(--border-color)'}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: setupStep === 'screen' ? 'var(--success-color)' : 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                      {setupStep === 'screen' ? '✓' : '1'}
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Camera & Microphone</h3>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Required to verify identity and record audio.</p>
+                    </div>
+                  </div>
+                  {setupStep === 'camera' && permissionDenied && (
+                    <div style={{ marginTop: '1rem', color: 'var(--error-color)', fontSize: '0.9rem', padding: '0.75rem', background: 'var(--error-bg)', borderRadius: '0.5rem' }}>
+                      Permission denied. Please allow access in your browser site settings and <a href="#" onClick={(e) => { e.preventDefault(); window.location.reload(); }} style={{ textDecoration: 'underline' }}>reload the page</a>.
+                    </div>
+                  )}
+                  {setupStep === 'camera' && !permissionDenied && (
+                    <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: 'var(--primary-color)' }}>
+                      Please click "Allow" on the browser permission prompt to proceed...
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Screen Sharing</h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>You must select <strong>"Entire Screen"</strong>.</p>
-                </div>
-              </div>
-              {setupStep === 'screen' && screenPermissionDenied && (
-                <div style={{ marginTop: '1rem', color: 'var(--error-color)', fontSize: '0.9rem', padding: '0.75rem', background: 'var(--error-bg)', borderRadius: '0.5rem' }}>
-                  <p style={{ margin: '0 0 0.5rem' }}>Screen sharing was denied or invalid.</p>
-                  <button onClick={() => setScreenPermissionDenied(false)} className="btn btn-primary w-full">Try Again & Select Entire Screen</button>
-                </div>
+
+                  <div style={{ padding: '1rem', opacity: setupStep === 'camera' ? 0.5 : 1, background: setupStep === 'screen' || setupStep === 'ready_to_start' ? 'var(--primary-light)' : 'var(--bg-color)', borderRadius: '0.5rem', border: `1px solid ${setupStep === 'screen' || setupStep === 'ready_to_start' ? 'var(--primary-color)' : 'var(--border-color)'}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: setupStep === 'ready_to_start' ? 'var(--success-color)' : setupStep === 'screen' ? 'var(--primary-color)' : 'var(--text-muted)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                        {setupStep === 'ready_to_start' ? '✓' : '2'}
+                      </div>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Screen Sharing</h3>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>You must select <strong>"Entire Screen"</strong>.</p>
+                      </div>
+                    </div>
+                    {setupStep === 'screen' && (
+                      <div style={{ marginTop: '1rem' }}>
+                        {!isScreenStarted ? (
+                          <button onClick={startScreenSetup} className="btn btn-primary w-full">
+                            Grant Screen Permission
+                          </button>
+                        ) : screenPermissionDenied ? (
+                          <div style={{ color: 'var(--error-color)', fontSize: '0.9rem', padding: '0.75rem', background: 'var(--error-bg)', borderRadius: '0.5rem' }}>
+                            <p style={{ margin: '0 0 0.5rem' }}>Screen sharing was denied or invalid.</p>
+                            <button onClick={() => setIsScreenStarted(false)} className="btn btn-primary w-full">Try Again & Select Entire Screen</button>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.9rem', color: 'var(--primary-color)' }}>
+                            Waiting for screen sharing... Ensure you select "Entire Screen".
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {setupStep === 'ready_to_start' && (
+                    <div style={{ marginTop: '2rem', textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                      <div className="flex items-center gap-3 justify-center mb-4" style={{ color: 'var(--success-color)' }}>
+                         <CheckCircle size={24} />
+                         <span style={{ fontWeight: 600 }}>All requirements met!</span>
+                      </div>
+                      <button onClick={startExam} className="btn btn-primary btn-lg w-full" style={{ background: 'var(--success-color)' }}>
+                        Start Exam Now
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
-              {setupStep === 'screen' && !screenPermissionDenied && (
-                <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: 'var(--primary-color)' }}>
-                  Waiting for screen sharing... Ensure you select "Entire Screen".
-                </div>
-              )}
-            </div>
           </div>
         </div>
       ) : (
         <>
-          {!isFullscreen && !isMobileDevice && !isFinished && !permissionDenied && !screenPermissionDenied && (
+          {showViolationWarning && (
+            <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+              <div className="card text-center shadow-lg border-2" style={{ maxWidth: '450px', borderColor: 'var(--error-color)' }}>
+                <AlertTriangle size={64} className="mx-auto mb-4" color="var(--error-color)" />
+                <h2 className="mb-2" style={{ color: 'var(--error-color)', fontSize: '1.75rem' }}>Security Violation</h2>
+                <p className="text-muted mb-4" style={{ fontSize: '1.1rem' }}>
+                  Forbidden shortcut (PrintScreen, Ctrl+C, etc.) detected. This is strictly prohibited.
+                </p>
+                <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
+                  <p style={{ fontWeight: 700, color: 'var(--error-color)', margin: 0 }}>
+                    Warning! Next violation will result in <strong>automatic submission</strong>.
+                  </p>
+                </div>
+                <button onClick={() => setShowViolationWarning(false)} className="btn btn-primary btn-lg w-full">
+                  I Understand & Resume
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isFullscreen && setupStep === 'ready' && !isMobileDevice && !isFinished && !permissionDenied && !screenPermissionDenied && (
             <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
               <div className="card text-center shadow-lg border-2" style={{ maxWidth: '400px', borderColor: 'var(--error-color)' }}>
                 <AlertTriangle size={48} className="icon-warning mx-auto mb-4" color="var(--error-color)" />
@@ -713,22 +877,24 @@ const Exam: React.FC = () => {
       {!isFinished && (
         <>
           {/* Always mount CameraRecorder unless finished to keep stream alive */}
-          <CameraRecorder
-            onPermissionDenied={handlePermissionDenied}
-            onStream={(s) => {
-               setCameraStream(s);
-               if ((setupStep as string) === 'camera') setSetupStep('screen');
-            }}
-          />
-          {/* Mount ScreenRecorder only in 'screen' or 'ready' setup steps */}
-          {((setupStep as string) === 'screen' || (setupStep as string) === 'ready') && !screenPermissionDenied && (
+          {isCameraStarted && (
+            <CameraRecorder
+              onPermissionDenied={handlePermissionDenied}
+              onStream={(s) => {
+                 setCameraStream(s);
+                 if ((setupStep as string) === 'camera') setSetupStep('screen');
+              }}
+            />
+          )}
+          {/* Mount ScreenRecorder only when requested and in 'screen' or 'ready' setup steps */}
+          {isScreenStarted && ((setupStep as string) === 'screen' || (setupStep as string) === 'ready_to_start' || (setupStep as string) === 'ready') && !screenPermissionDenied && (
             <ScreenRecorder
               onPermissionDenied={handleScreenPermissionDenied}
-              onReady={() => { if ((setupStep as string) === 'screen') setSetupStep('ready'); }}
+              onReady={() => { if ((setupStep as string) === 'screen') setSetupStep('ready_to_start'); }}
               onStreamStop={handleScreenStreamStop}
             />
           )}
-          {(setupStep as string) === 'ready' && <CameraPopup stream={cameraStream} />}
+          {((setupStep as string) === 'ready_to_start' || (setupStep as string) === 'ready') && <CameraPopup stream={cameraStream} />}
         </>
       )}
 

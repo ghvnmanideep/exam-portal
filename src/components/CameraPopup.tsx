@@ -81,17 +81,15 @@ const CameraPopup: React.FC<CameraPopupProps> = ({ stream }) => {
       </div>
 
       {/* ── Video feed ───────────────────────────────────────── */}
-      {!minimized && (
-        <div className="cam-popup__body">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="cam-popup__video"
-          />
-        </div>
-      )}
+      <div className="cam-popup__body" style={{ display: minimized ? 'none' : 'block' }}>
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="cam-popup__video"
+        />
+      </div>
     </div>
   );
 };
