@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { saveMedia } from '../utils/storage';
 
 interface CameraRecorderProps {
   /** Called when the user denies camera/microphone permission. */
@@ -68,8 +69,19 @@ const CameraRecorder: React.FC<CameraRecorderProps> = ({ onPermissionDenied, onS
           const startAudioChunk = () => {
             if (!active) return;
             try {
-              const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined;
-              const mediaRecorder = new MediaRecorder(audioStream, options);
+              // --- MOBILE AUDIO COMPATIBILITY ---
+              // WebM is not supported on iOS Safari. MP4/AAC is the standard there.
+              const mimeTypes = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4',
+                'audio/aac',
+                'audio/wav'
+              ];
+              const supportedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+              console.log('Using audio mimeType:', supportedType || 'default');
+
+              const mediaRecorder = new MediaRecorder(audioStream, supportedType ? { mimeType: supportedType } : undefined);
               mediaRecorderRef.current = mediaRecorder;
             const chunks: Blob[] = [];
 
@@ -167,28 +179,16 @@ const CameraRecorder: React.FC<CameraRecorderProps> = ({ onPermissionDenied, onS
     saveImage(dataUrl);
   };
 
-  /** Appends a captured frame (base64 JPEG) with its timestamp to localStorage. */
+  /** Appends a captured frame (base64 JPEG) with its timestamp to IndexedDB. */
   const saveImage = (base64Image: string) => {
-    try {
-      const existing = JSON.parse(localStorage.getItem('examImages') || '[]');
-      existing.push({ timestamp: new Date().toISOString(), image: base64Image });
-      localStorage.setItem('examImages', JSON.stringify(existing));
-      console.log('Image captured at', new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error('localStorage save failed (storage may be full):', e);
-    }
+    saveMedia('examImages', { timestamp: new Date().toISOString(), image: base64Image });
+    console.log('Image captured and saved to IndexedDB');
   };
 
-  /** Appends a recorded audio chunk (base64) with its timestamp to localStorage. */
+  /** Appends a recorded audio chunk (base64) with its timestamp to IndexedDB. */
   const saveAudio = (base64Audio: string) => {
-    try {
-      const existing = JSON.parse(localStorage.getItem('examAudio') || '[]');
-      existing.push({ timestamp: new Date().toISOString(), audio: base64Audio });
-      localStorage.setItem('examAudio', JSON.stringify(existing));
-      console.log('Audio chunk saved at', new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error('localStorage Audio save failed:', e);
-    }
+    saveMedia('examAudio', { timestamp: new Date().toISOString(), audio: base64Audio });
+    console.log('Audio chunk saved to IndexedDB');
   };
 
   // ── Rendering ──────────────────────────────────────────────────────────────

@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
+import { saveMedia } from '../utils/storage';
 
 /**
  * Props for the ScreenRecorder component.
@@ -44,8 +46,30 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         if (isMobile || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
           console.warn('Screen sharing is not supported on this device. Bypassing screen record step.');
+          
+          // --- MOBILE SCREEN CAPTURE FALLBACK ---
+          // Use html2canvas to capture the page content periodically on mobile.
+          const capturePage = async () => {
+             if (!active) return;
+             try {
+                const canvas = await html2canvas(document.body, {
+                   scale: 0.5, // Reduce size for storage efficiency
+                   logging: false,
+                   useCORS: true
+                });
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                saveMedia('examScreenCaptures', { timestamp: new Date().toISOString(), image: dataUrl });
+                console.log('Mobile page capture saved');
+             } catch (e) {
+                console.error('Mobile page capture failed:', e);
+             }
+          };
+
           if (active && onReady) {
             onReady();
+            // Start periodic page capture
+            capturePage();
+            intervalRef.current = window.setInterval(capturePage, CAPTURE_INTERVAL_MS);
           }
           return;
         }
@@ -156,19 +180,13 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
   };
 
   /**
-   * Parses the stringified base64 image and saves it securely along with a timestamp to localStorage.
+   * Parses the stringified base64 image and saves it securely along with a timestamp to IndexedDB.
    * 
    * @param base64Image The image raw representation.
    */
   const saveImage = (base64Image: string) => {
-    try {
-      const existing = JSON.parse(localStorage.getItem('examScreenCaptures') || '[]');
-      existing.push({ timestamp: new Date().toISOString(), image: base64Image });
-      localStorage.setItem('examScreenCaptures', JSON.stringify(existing));
-      console.log('Screen captured at', new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error('localStorage save failed for screen captures:', e);
-    }
+    saveMedia('examScreenCaptures', { timestamp: new Date().toISOString(), image: base64Image });
+    console.log('Screen captured and saved to IndexedDB');
   };
 
   return (

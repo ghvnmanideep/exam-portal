@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, Camera, Mic, Clock, Download, Image as ImageIcon, Monitor } from 'lucide-react';
+import { getMedia, clearAllMedia } from '../utils/storage';
 
 interface CapturedImage {
   timestamp: string;
@@ -12,7 +13,7 @@ interface CapturedAudio {
   audio: string; // Base64
 }
 
-const Admin: React.FC = () => {
+const Admin: React.FC = () => { 
   const [images, setImages] = useState<CapturedImage[]>([]);
   const [screenCaptures, setScreenCaptures] = useState<CapturedImage[]>([]);
   const [audios, setAudios] = useState<CapturedAudio[]>([]);
@@ -25,29 +26,30 @@ const Admin: React.FC = () => {
     loadAudios();
   }, []);
 
-  const loadImages = () => {
+  const loadImages = async () => {
+    const indexedData = await getMedia<CapturedImage>('examImages');
     const stored = localStorage.getItem('examImages');
-    if (stored) {
-      setImages(JSON.parse(stored));
-    }
+    const legacyData = stored ? JSON.parse(stored) : [];
+    setImages([...legacyData, ...indexedData]);
   };
 
-  const loadScreenCaptures = () => {
+  const loadScreenCaptures = async () => {
+    const indexedData = await getMedia<CapturedImage>('examScreenCaptures');
     const stored = localStorage.getItem('examScreenCaptures');
-    if (stored) {
-      setScreenCaptures(JSON.parse(stored));
-    }
+    const legacyData = stored ? JSON.parse(stored) : [];
+    setScreenCaptures([...legacyData, ...indexedData]);
   };
 
-  const loadAudios = () => {
+  const loadAudios = async () => {
+    const indexedData = await getMedia<CapturedAudio>('examAudio');
     const stored = localStorage.getItem('examAudio');
-    if (stored) {
-      setAudios(JSON.parse(stored));
-    }
+    const legacyData = stored ? JSON.parse(stored) : [];
+    setAudios([...legacyData, ...indexedData]);
   };
 
-  const clearImages = () => {
+  const clearImages = async () => {
     if (window.confirm('Are you sure you want to clear all captured media?')) {
+      await clearAllMedia();
       localStorage.removeItem('examImages');
       localStorage.removeItem('examScreenCaptures');
       localStorage.removeItem('examAudio');

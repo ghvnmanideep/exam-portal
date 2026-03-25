@@ -166,7 +166,7 @@ const Exam: React.FC = () => {
         e.preventDefault();
         
         // Show screenshot warning toast
-        setShowScreenshotToast(true);
+        setShowScreenshotToast(false);
         if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
         screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
         
