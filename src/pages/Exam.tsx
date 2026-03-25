@@ -726,7 +726,7 @@ const Exam: React.FC = () => {
                 </p>
                 <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
                   <p style={{ fontWeight: 700, color: 'var(--error-color)', margin: 0 }}>
-                    Warning! Next violation will result in <strong>automatic submission</strong>.
+                    Warning {shortcutViolationCount} of 2 strike(s). Next violation will result in <strong>automatic submission</strong>.
                   </p>
                 </div>
                 <button onClick={() => setShowViolationWarning(false)} className="btn btn-primary btn-lg w-full">
