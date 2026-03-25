@@ -193,14 +193,14 @@ const Exam: React.FC = () => {
       const isSelectAll = ctrlOrMeta && key === 'a';
       const isFind = ctrlOrMeta && key === 'f';
       const isDevTools = e.key === 'F12' || (ctrlOrMeta && e.shiftKey && (key === 'i' || key === 'j' || key === 'c'));
-      const isPrintScreen = e.key === 'PrintScreen';
-      
-      // Mac specific screenshot shortcuts
-      const isMacScreenshot = e.metaKey && e.shiftKey && (key === '3' || key === '4' || key === '5');
-      // Windows Snipping
-      const isWinSnipping = e.metaKey && e.shiftKey && key === 's';
+      const isPrintScreen = e.key === 'PrintScreen' || e.keyCode === 44;
+      // Mac specific screenshot shortcuts      const isPrintScreen = e.key === 'PrintScreen' || e.keyCode === 44;
+      const isMacScreenshot = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5');
+      const isWinSnipping = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S');
+      const isWinV = (e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V');
+      const isMetaKey = e.key === 'Meta' || e.key === 'OS' || e.key === 'Command' || e.keyCode === 91 || e.keyCode === 92 || e.keyCode === 93;
 
-      if (isCopyPaste || isPrint || isSave || isViewSource || isSelectAll || isFind || isDevTools || isPrintScreen || isMacScreenshot || isWinSnipping) {
+      if (isCopyPaste || isPrint || isSave || isViewSource || isSelectAll || isFind || isDevTools || isPrintScreen || isMacScreenshot || isWinSnipping || isWinV || isMetaKey) {
         e.preventDefault();
         e.stopPropagation();
         
@@ -208,9 +208,9 @@ const Exam: React.FC = () => {
         if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
         screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
         
-        handleShortcutViolation(isPrintScreen || isMacScreenshot || isWinSnipping ? 'screenshot' : `shortcut_${key}`);
+        handleShortcutViolation(isMetaKey ? 'meta_key' : (isPrintScreen || isMacScreenshot || isWinSnipping ? 'screenshot' : `shortcut_${key}`));
         
-        if (isPrintScreen || isMacScreenshot || isWinSnipping) {
+        if (isPrintScreen || isMacScreenshot || isWinSnipping || isMetaKey) {
           navigator.clipboard.writeText(''); // Clear clipboard
         }
       }
