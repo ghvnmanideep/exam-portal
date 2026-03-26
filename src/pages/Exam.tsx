@@ -5,7 +5,10 @@ import ScreenRecorder from '../components/ScreenRecorder';
 import CameraPopup from '../components/CameraPopup';
 import { QUESTIONS } from '../data/questions';
 import { getUser } from '../utils/auth';
-import { AlertTriangle, CheckCircle, XCircle, Clock, Award, RotateCcw } from 'lucide-react';
+import { 
+  AlertTriangle, CheckCircle, XCircle, Clock, Award, RotateCcw, 
+  ShieldCheck, Layout, Eye, Ban, MousePointer2 
+} from 'lucide-react';
 import { useFaceDetection } from '../hooks/useFaceDetection';
 
 /**
@@ -622,18 +625,40 @@ const Exam: React.FC = () => {
             <h2 className="mb-4 text-center">Exam Setup</h2>
             
             {setupStep === 'start' && (
-              <div style={{ textAlign: 'center' }}>
-                <div className="icon-circle lg-icon-circle icon-primary" style={{ background: 'var(--primary-light)', marginBottom: '1.5rem' }}>
-                  <Award size={40} />
+              <>
+                <div style={{ textAlign: 'left', background: 'var(--bg-color)', padding: '1.5rem', borderRadius: '0.8rem', border: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ShieldCheck size={18} className="text-primary" />
+                    Rules & Regulations
+                  </h3>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
+                    <li style={{ display: 'flex', gap: '0.75rem' }}>
+                      <Layout size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary-color)' }} />
+                      <span><strong>Mandatory Fullscreen:</strong> You must remain in fullscreen mode. Exiting for &gt;30s will trigger <strong>auto-submission</strong>.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '0.75rem' }}>
+                      <Eye size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary-color)' }} />
+                      <span><strong>Continuous Monitoring:</strong> Your Camera, Microphone, and Entire Screen are recorded for proctoring.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '0.75rem' }}>
+                      <Ban size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary-color)' }} />
+                      <span><strong>Forbidden Actions:</strong> Copy/Paste, Printing, and Screenshots are blocked. Two violations will <strong>terminate</strong> the exam.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '0.75rem' }}>
+                      <RotateCcw size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary-color)' }} />
+                      <span><strong>No Tab Switching:</strong> Leaving the exam window is strictly prohibited. Warning on 1st/2nd attempt; 3rd is <strong>auto-submit</strong>.</span>
+                    </li>
+                    <li style={{ display: 'flex', gap: '0.75rem' }}>
+                      <MousePointer2 size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary-color)' }} />
+                      <span><strong>Cursor Constraints:</strong> Keep your cursor within the window. Leaving for &gt;30s results in <strong>automatic submission</strong>.</span>
+                    </li>
+                  </ul>
                 </div>
-                <p className="text-muted mb-6">
-                  Before starting the exam, you must grant camera and screen sharing permissions.
-                  The exam will be conducted in <strong>fullscreen mode</strong> for proctoring purposes.
-                </p>
+
                 <button onClick={startCameraSetup} className="btn btn-primary btn-lg w-full">
-                  Start Exam Setup
+                  Agree & Start Setup
                 </button>
-              </div>
+              </>
             )}
 
             {setupStep !== 'start' && (
