@@ -30,6 +30,10 @@
 .no-select {
   user-select: none;
   -webkit-user-select: none;
+  /* iOS: disable the long-press callout menu (copy/paste/define) */
+  -webkit-touch-callout: none;
+  /* Remove tap highlight color on touch devices */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .fullscreen-overlay {

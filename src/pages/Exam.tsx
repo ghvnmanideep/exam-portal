@@ -47,6 +47,8 @@ const Exam: React.FC = () => {
   const [isBlurred, setIsBlurred] = useState(false);
   const [shortcutViolationCount, setShortcutViolationCount] = useState(0);
   const [showViolationWarning, setShowViolationWarning] = useState(false);
+  const [showMobileScreenshotOverlay, setShowMobileScreenshotOverlay] = useState(false);
+  const mobileScreenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const isFaceDetected = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
@@ -254,6 +256,69 @@ const Exam: React.FC = () => {
       if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
     };
   }, []);
+
+  // ---- Mobile-specific protections: block copy/paste, long-press, screenshot overlay ----
+  useEffect(() => {
+    if (!isMobileDevice || setupStep !== 'ready' || isFinished) return;
+
+    // Prevent long-press context menu (iOS Safari shows copy/paste/look-up menu)
+    const blockContextMenu = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowScreenshotToast(true);
+      if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
+      screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
+    };
+
+    // Prevent touch-based text selection on long press
+    const blockTouchStart = (e: TouchEvent) => {
+      // Block multi-touch (potential screenshot gesture on some androids)
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    // On some Android browsers a screenshot triggers a very brief visibility change.
+    // We flash a black overlay to make the screenshot useless.
+    const handleVisibilityForScreenshot = () => {
+      if (document.hidden) {
+        setShowMobileScreenshotOverlay(true);
+        if (mobileScreenshotTimerRef.current) clearTimeout(mobileScreenshotTimerRef.current);
+        // Keep overlay up for 1.5s so screenshot captures only black
+        mobileScreenshotTimerRef.current = setTimeout(() => {
+          setShowMobileScreenshotOverlay(false);
+        }, 1500);
+      }
+    };
+
+    // Block clipboard events (copy / cut / paste) on touch devices
+    const blockClipboard = (e: ClipboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowScreenshotToast(true);
+      if (screenshotToastTimerRef.current) clearTimeout(screenshotToastTimerRef.current);
+      screenshotToastTimerRef.current = setTimeout(() => setShowScreenshotToast(false), 3000);
+      handleShortcutViolation(`mobile_${e.type}_attempt`);
+    };
+
+    document.addEventListener('contextmenu', blockContextMenu, { passive: false });
+    document.addEventListener('touchstart', blockTouchStart, { passive: false });
+    document.addEventListener('visibilitychange', handleVisibilityForScreenshot);
+    document.addEventListener('copy', blockClipboard, true);
+    document.addEventListener('cut', blockClipboard, true);
+    document.addEventListener('paste', blockClipboard, true);
+
+    return () => {
+      document.removeEventListener('contextmenu', blockContextMenu);
+      document.removeEventListener('touchstart', blockTouchStart);
+      document.removeEventListener('visibilitychange', handleVisibilityForScreenshot);
+      document.removeEventListener('copy', blockClipboard, true);
+      document.removeEventListener('cut', blockClipboard, true);
+      document.removeEventListener('paste', blockClipboard, true);
+      if (mobileScreenshotTimerRef.current) clearTimeout(mobileScreenshotTimerRef.current);
+    };
+  }, [setupStep, isFinished]);
+
   useEffect(() => {
     if (setupStep !== 'ready' || isFinished) return;
     
@@ -617,7 +682,35 @@ const Exam: React.FC = () => {
   const showOverlay = (!isFullscreen || isBlurred) && setupStep === 'ready' && !isFinished;
 
   return (
-    <div className={`exam-layout bg-light no-select ${showOverlay ? 'layout-blurred' : ''}`} style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
+    <div
+      className={`exam-layout bg-light no-select ${showOverlay ? 'layout-blurred' : ''}`}
+      style={{
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        // Disable iOS touch callout (long-press copy/paste/define menu)
+        WebkitTouchCallout: 'none' as any,
+        // Remove tap highlight flash on mobile
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      {/* Mobile Screenshot Black Overlay */}
+      {showMobileScreenshotOverlay && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: '#000000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <span style={{ color: '#ffffff', fontSize: '1.1rem', fontWeight: 600 }}>
+            🚫 Screenshot Blocked
+          </span>
+        </div>
+      )}
       
       {setupStep !== 'ready' ? (
         <div className="flex-center full-screen bg-light" style={{ position: 'absolute', inset: 0, zIndex: 10000 }}>
