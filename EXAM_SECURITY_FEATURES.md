@@ -362,3 +362,108 @@ _These apply **only** when `isMobileDevice === true` (detected via `navigator.us
 | `src/components/CameraRecorder.tsx` | Camera stream setup |
 | `src/components/ScreenRecorder.tsx` | Screen sharing setup |
 | `src/components/CameraPopup.tsx` | Live camera preview popup |
+
+
+
+Additional Anti-Malpractice Measures for Examora
+What Already Exists (Current Protection)
+Feature	Status
+Fullscreen enforcement (30s auto-submit)	✅ Done
+Tab-switch detection (3-strike auto-submit)	✅ Done
+Face detection via camera (4-strike auto-submit)	✅ Done
+Mouse-leave window (30s auto-submit)	✅ Done
+Keyboard shortcut blocking (Ctrl+C/V/X/P/S/F/U, F12, etc.)	✅ Done
+Clipboard cleared every 5s	✅ Done
+Right-click disabled	✅ Done
+Print blocked	✅ Done
+Mobile screenshot black overlay	✅ Done
+Screen recording (entire screen)	✅ Done
+Camera + microphone recording	✅ Done
+Proposed New Anti-Malpractice Features
+1. Multiple-Face Detection Warning
+What: If more than one face is detected in the camera frame, flag it as a potential impersonation / helper scenario.
+
+How: Upgrade the useFaceDetection hook to return the face count in addition to the boolean. If faceCount > 1, fire a violation with its own strike counter (3 strikes = auto-submit).
+
+2. Answer Change Frequency Tracking
+What: Track how many times a candidate changes a single answer. Rapid, repeated answer changes on the same question may indicate a test-sharing attack (e.g., someone else is on the phone giving answers). If a single answer is changed more than 5 times in total, log it as a suspicious_answer_change violation.
+
+How: Keep a answerChanges: Record<questionId, number> ref in 
+Exam.tsx
+. Increment on every 
+handleOptionSelect
+ call. Trigger 
+recordViolation
+ when threshold is crossed.
+
+3. Exam Time Integrity Check (Anti-Speedrun Detection)
+What: Record the timestamps when each question is first visited and when it's answered. If the total elapsed time from start to submission is suspiciously short (< 20% of allotted time) and all questions are answered, log an exam_completed_suspiciously_fast violation to flag for admin review.
+
+How: Track examStartTime and measure elapsed at 
+finishExam()
+. Log to localStorage alongside violations.
+
+4. Periodic Randomized Challenge (Anti-Distraction Check)
+What: Every ~8 minutes, pause the exam and show a small "I'm still here" CAPTCHA-style prompt — e.g., a random 4-digit code the user must type in within 15 seconds, or the exam auto-submits. This prevents candidates from leaving the browser unattended on a friend's screen.
+
+How:
+
+A new useRef countdown fires every 480 seconds (configurable).
+Shows a modal with a randomly generated 4-digit code.
+Candidate must type it exactly in a text field and click "Confirm".
+Failure within 15 seconds = auto-submit with violation type liveness_check_failed.
+
+5. DevTools Activity Detection via Window Dimension Changes
+What: Most DevTools panels (when docked to the side) cause window.outerWidth - window.innerWidth or window.outerHeight - window.innerHeight to grow significantly. Regularly polling this allows indirect detection.
+
+How:
+
+useEffect polling every 2 seconds checks if outerWidth - innerWidth > 160 or outerHeight - innerHeight > 160.
+Fires 
+handleShortcutViolation('devtools_detected')
+ — uses the same 2-strike system already in place.
+ 
+6. Answer Submission Confirmation Modal
+What: Before final 
+finishExam()
+ on manual submission, show a styled confirmation modal with a summary of unanswered questions. This prevents accidental submissions while also showing a violation summary. Already existing "Retake Exam" button has a security hole — it should be removed/gated after violations.
+
+How: Add a showSubmitConfirm state. The final "Submit Exam" button sets showSubmitConfirm = true. The modal shows unanswered question count + violation count, then has "Confirm Submit" / "Go Back" buttons.
+
+7. CSS-Level Anti-Inspect (Text & Image Protection)
+What: Apply CSS properties on the question text area that make it harder to extract text via browser tools.
+
+How: Already have user-select: none globally. Also add CSS pointer-events: none on the option text spans (event handled by the label parent), and -webkit-user-drag: none to prevent drag selection.
+
+Proposed Changes
+useFaceDetection Hook
+[MODIFY] 
+useFaceDetection.ts
+Change return type from boolean to { isFaceDetected: boolean; faceCount: number }.
+Count faces from detections.length.
+Main Exam Component
+[MODIFY] 
+Exam.tsx
+Multiple face detection: New state multipleFaceWarningCount, warning modal for faceCount > 1.
+Answer change tracking: answerChangesRef map, violation logged at > 5 changes per question.
+Speed detection: examStartTime tracked, check at 
+finishExam()
+.
+Liveness CAPTCHA: New states showLivenessModal, livenessCode, livenessInput, livenessTimeLeft. New useEffect with 480s interval.
+DevTools detection: New useEffect polling outerWidth - innerWidth.
+Submit confirmation modal: New state showSubmitConfirm, modal rendered before calling 
+finishExam
+.
+Remove Retake Exam button from results if violations exist (or hide it).
+NOTE
+
+All new modals use the existing design system (cards, fullscreen-overlay, error colors) — no new CSS files needed.
+
+Verification Plan
+Manual Testing (in browser after npm run dev started at d:\Jozuna Project\Examora)
+Multiple Face Test: Hold two ID cards or have a second person appear in camera. Confirm a "Multiple Faces Detected" warning appears.
+DevTools Detection: Open browser DevTools (F12 or dock to side) during exam. Confirm violation modal is shown within ~2s.
+Liveness CAPTCHA: Wait 8 minutes OR temporarily lower the interval constant to 10 seconds in code; confirm the CAPTCHA modal appears and auto-submits if the code is not entered in 15s.
+Fast Submission Detection: Answer all questions immediately and submit; confirm exam_completed_suspiciously_fast appears in localStorage.examViolations.
+Submit Confirmation Modal: Click "Submit Exam" — confirm a confirmation modal appears with unanswered count before final submission.
+Answer Change Tracking: Change the same answer more than 5 times; confirm suspicious_answer_change entry in localStorage.examViolations.

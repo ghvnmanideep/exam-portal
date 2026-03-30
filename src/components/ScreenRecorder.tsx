@@ -53,11 +53,11 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
              if (!active) return;
              try {
                 const canvas = await html2canvas(document.body, {
-                   scale: 0.5, // Reduce size for storage efficiency
+                   scale: 1.5, // Better clarity for mobile screens
                    logging: false,
                    useCORS: true
                 });
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                 saveMedia('examScreenCaptures', { timestamp: new Date().toISOString(), image: dataUrl });
                 console.log('Mobile page capture saved');
              } catch (e) {

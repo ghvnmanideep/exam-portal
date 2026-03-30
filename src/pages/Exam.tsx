@@ -48,6 +48,7 @@ const Exam: React.FC = () => {
   const [shortcutViolationCount, setShortcutViolationCount] = useState(0);
   const [showViolationWarning, setShowViolationWarning] = useState(false);
   const [showMobileScreenshotOverlay, setShowMobileScreenshotOverlay] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'question' | 'palette'>('question');
   const mobileScreenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const isFaceDetected = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
@@ -887,8 +888,24 @@ const Exam: React.FC = () => {
 
             <main className="exam-main-container container" style={{ display: 'flex', gap: '1.5rem', marginTop: '2rem', alignItems: 'flex-start', flex: 1 }}>
         
+        {/* Mobile Tab Bar */}
+        <div className="mobile-tab-bar">
+          <button 
+            className={`mobile-tab-btn ${mobileTab === 'question' ? 'active' : ''}`}
+            onClick={() => setMobileTab('question')}
+          >
+            Question {currentQuestionIndex + 1}
+          </button>
+          <button 
+            className={`mobile-tab-btn ${mobileTab === 'palette' ? 'active' : ''}`}
+            onClick={() => setMobileTab('palette')}
+          >
+            Question Palette
+          </button>
+        </div>
+
         {/* Left Column: Question Area */}
-        <div className="exam-question-area" style={{ flex: 1, minWidth: 0 }}>
+        <div className={`exam-question-area ${mobileTab === 'palette' ? 'hide-on-mobile' : ''}`} style={{ flex: 1, minWidth: 0 }}>
           <div className="card question-card mb-6 shadow-sm" style={{ minHeight: '350px' }}>
             <h3 className="question-text" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
               <span className="question-number" style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
@@ -954,7 +971,7 @@ const Exam: React.FC = () => {
         </div>
 
         {/* Right Column: Question Palette Sidebar */}
-        <div className="exam-sidebar card shadow-sm" style={{ width: '300px', flexShrink: 0, position: 'sticky', top: '100px' }}>
+        <div className={`exam-sidebar card shadow-sm ${mobileTab === 'question' ? 'hide-on-mobile' : ''}`} style={{ width: '300px', flexShrink: 0, position: 'sticky', top: '100px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Question Palette</h3>
           </div>
@@ -966,7 +983,10 @@ const Exam: React.FC = () => {
                return (
                  <button
                    key={q.id}
-                   onClick={() => setCurrentQuestionIndex(idx)}
+                   onClick={() => {
+                     setCurrentQuestionIndex(idx);
+                     setMobileTab('question');
+                   }}
                    className={`palette-btn ${isAnswered ? 'answered' : 'unanswered'} ${isCurrent ? 'current' : ''}`}
                    title={`Go to Question ${idx + 1}`}
                  >
