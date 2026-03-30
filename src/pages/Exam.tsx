@@ -680,7 +680,7 @@ const Exam: React.FC = () => {
   }
 
   // ---- Exam screen ----
-  const showOverlay = (!isFullscreen || isBlurred) && setupStep === 'ready' && !isFinished;
+  const showOverlay = !isMobileDevice && (!isFullscreen || isBlurred) && setupStep === 'ready' && !isFinished;
 
   return (
     <div
