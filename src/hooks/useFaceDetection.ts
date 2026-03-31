@@ -7,7 +7,8 @@ export const useFaceDetection = (
   stream: MediaStream | null,
   active: boolean = true
 ) => {
-  const [isFaceDetected, setIsFaceDetected] = useState<boolean>(true); // bias towards true to prevent false alarms before initialization
+  const [isFaceDetected, setIsFaceDetected] = useState<boolean>(true);
+  const [isMultiFaceDetected, setIsMultiFaceDetected] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   
   const faceDetectorRef = useRef<FaceDetector | null>(null);
@@ -102,11 +103,9 @@ export const useFaceDetection = (
           const startTimeMs = performance.now();
           const results = detector.detectForVideo(video, startTimeMs);
           
-          if (results.detections.length > 0) {
-            setIsFaceDetected(true);
-          } else {
-            setIsFaceDetected(false);
-          }
+          const faceCount = results.detections.length;
+          setIsFaceDetected(faceCount > 0);
+          setIsMultiFaceDetected(faceCount > 1);
         } catch (err) {
           console.error("Error during face detection:", err);
         }
@@ -138,5 +137,5 @@ export const useFaceDetection = (
     };
   }, [active, isInitialized, stream]);
 
-  return isFaceDetected;
+  return { isFaceDetected, isMultiFaceDetected };
 };

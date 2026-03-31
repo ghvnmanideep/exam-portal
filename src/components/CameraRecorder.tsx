@@ -167,9 +167,9 @@ const CameraRecorder: React.FC<CameraRecorderProps> = ({ onPermissionDenied, onS
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/webp', 0.85);
 
-    // Sanity check: a blank/black JPEG at this quality is always very small.
+    // Sanity check: a blank/black WebP at this quality is always very small.
     // A real face image with meaningful content will be well above 5 KB.
     if (dataUrl.length < 5000) {
       console.warn('Capture appears blank, skipping save');
@@ -179,7 +179,7 @@ const CameraRecorder: React.FC<CameraRecorderProps> = ({ onPermissionDenied, onS
     saveImage(dataUrl);
   };
 
-  /** Appends a captured frame (base64 JPEG) with its timestamp to IndexedDB. */
+  /** Appends a captured frame (base64 WebP) with its timestamp to IndexedDB. */
   const saveImage = (base64Image: string) => {
     saveMedia('examImages', { timestamp: new Date().toISOString(), image: base64Image });
     console.log('Image captured and saved to IndexedDB');

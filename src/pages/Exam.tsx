@@ -43,6 +43,7 @@ const Exam: React.FC = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [faceWarningCount, setFaceWarningCount] = useState(0);
   const [showFaceWarning, setShowFaceWarning] = useState(false);
+  const [showMultiFaceWarning, setShowMultiFaceWarning] = useState(false);
   const [fullscreenTimeLeft, setFullscreenTimeLeft] = useState(30);
   const [isBlurred, setIsBlurred] = useState(false);
   const [shortcutViolationCount, setShortcutViolationCount] = useState(0);
@@ -51,7 +52,7 @@ const Exam: React.FC = () => {
   const [mobileTab, setMobileTab] = useState<'question' | 'palette'>('question');
   const mobileScreenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  const isFaceDetected = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
+  const { isFaceDetected, isMultiFaceDetected } = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
   const navigate = useNavigate();
   const user = getUser();
@@ -431,6 +432,33 @@ const Exam: React.FC = () => {
       if (faceMissingTimerRef.current) clearTimeout(faceMissingTimerRef.current);
     }
   }, [isFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
+
+  // Multi-face detection warning (recurring every 5 seconds)
+  useEffect(() => {
+    if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied || !cameraStream) {
+      setShowMultiFaceWarning(false);
+      return;
+    }
+
+    let intervalId: number | null = null;
+
+    if (isMultiFaceDetected) {
+      setShowMultiFaceWarning(true);
+      recordViolation('multi_face_detected');
+      
+      // Repeating warning every 5 seconds as requested
+      intervalId = window.setInterval(() => {
+        alert('SECURITY WARNING: More than one face detected! Please ensure you are alone during the exam.');
+        recordViolation('multi_face_detected_recurring');
+      }, 5000);
+    } else {
+      setShowMultiFaceWarning(false);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isMultiFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
 
   // Mouse leave tracking (Auto-Submit after 30s)
   useEffect(() => {
@@ -1064,6 +1092,26 @@ const Exam: React.FC = () => {
               </p>
               <p style={{ fontSize: '0.85rem', color: 'var(--error-color)', marginTop: '0.5rem', marginBottom: 0 }}>
                 The exam will automatically submit on the 4th violation.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Multi-Face Detection Warning Modal */}
+      {showMultiFaceWarning && (
+        <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+          <div className="card text-center shadow-lg border-2" style={{ maxWidth: '450px', borderColor: 'var(--error-color)' }}>
+            <AlertTriangle size={64} className="mx-auto mb-4" color="var(--error-color)" />
+            <h2 className="mb-2" style={{ color: 'var(--error-color)', fontSize: '1.75rem' }}>Multiple Faces Detected</h2>
+            <p className="text-muted mb-4" style={{ fontSize: '1.1rem' }}>
+              Our system has detected more than one person in your camera feed. This is a severe security violation.
+            </p>
+            <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '0.5rem', marginTop: '1.5rem' }}>
+              <p style={{ fontWeight: 700, color: 'var(--error-color)', margin: 0 }}>
+                Please ensure you are alone and no other persons are visible in the camera.
+              </p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--error-color)', marginTop: '0.5rem', marginBottom: 0 }}>
+                This incident has been recorded.
               </p>
             </div>
           </div>

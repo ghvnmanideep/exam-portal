@@ -62,7 +62,7 @@ const Admin: React.FC = () => {
   const downloadImage = (img: CapturedImage, idx: number) => {
     const a = document.createElement('a');
     a.href = img.image;
-    a.download = `capture-${idx + 1}-${new Date(img.timestamp).toISOString().replace(/[:.]/g, '-')}.jpg`;
+    a.download = `capture-${idx + 1}-${new Date(img.timestamp).toISOString().replace(/[:.]/g, '-')}.webp`;
     a.click();
   };
 

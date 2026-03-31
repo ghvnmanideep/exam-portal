@@ -55,9 +55,9 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
                 const canvas = await html2canvas(document.body, {
                    scale: 1.5, // Better clarity for mobile screens
                    logging: false,
-                   useCORS: true
+                    useCORS: true
                 });
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                const dataUrl = canvas.toDataURL('image/webp', 0.85);
                 saveMedia('examScreenCaptures', { timestamp: new Date().toISOString(), image: dataUrl });
                 console.log('Mobile page capture saved');
              } catch (e) {
@@ -170,7 +170,7 @@ const ScreenRecorder: React.FC<ScreenRecorderProps> = ({ onPermissionDenied, onS
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/webp', 0.85);
 
     if (dataUrl.length < 5000) {
       return;
