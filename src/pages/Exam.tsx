@@ -42,7 +42,9 @@ const Exam: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [faceWarningCount, setFaceWarningCount] = useState(0);
+  const [positionWarningCount, setPositionWarningCount] = useState(0);
   const [showFaceWarning, setShowFaceWarning] = useState(false);
+  const [showPositionWarning, setShowPositionWarning] = useState(false);
   const [showMultiFaceWarning, setShowMultiFaceWarning] = useState(false);
   const [fullscreenTimeLeft, setFullscreenTimeLeft] = useState(30);
   const [isBlurred, setIsBlurred] = useState(false);
@@ -52,16 +54,19 @@ const Exam: React.FC = () => {
   const [mobileTab, setMobileTab] = useState<'question' | 'palette'>('question');
   const mobileScreenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  const { isFaceDetected, isMultiFaceDetected } = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
+  const { isFaceDetected, isMultiFaceDetected, isPositionWrong, positionWarning } = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
   const navigate = useNavigate();
   const user = getUser();
   const isFinishedRef = useRef(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const faceWarningHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const positionWarningHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenshotToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabSwitchCountRef = useRef(0);
   const mouseLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const faceMissingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const positionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullscreenTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handlePermissionDenied = React.useCallback(() => {
@@ -414,6 +419,12 @@ const Exam: React.FC = () => {
              } else {
                recordViolation('face_not_detected_warning');
                setShowFaceWarning(true);
+               
+               // Auto-hide warning after 5 seconds
+               if (faceWarningHideTimerRef.current) clearTimeout(faceWarningHideTimerRef.current);
+               faceWarningHideTimerRef.current = setTimeout(() => {
+                 setShowFaceWarning(false);
+               }, 5000);
              }
              return newCount;
           });
@@ -425,6 +436,10 @@ const Exam: React.FC = () => {
         clearTimeout(faceMissingTimerRef.current);
         faceMissingTimerRef.current = null;
       }
+      if (faceWarningHideTimerRef.current) {
+        clearTimeout(faceWarningHideTimerRef.current);
+        faceWarningHideTimerRef.current = null;
+      }
       setShowFaceWarning(false);
     }
     
@@ -432,6 +447,52 @@ const Exam: React.FC = () => {
       if (faceMissingTimerRef.current) clearTimeout(faceMissingTimerRef.current);
     }
   }, [isFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
+
+  // Head/Eye Position warning and Auto-Submit
+  useEffect(() => {
+    if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied || !cameraStream) return;
+
+    if (isPositionWrong && isFaceDetected) { // Only show position warning if face is detected (face missing take precedence)
+      // If position is wrong for 3 continuous seconds
+      if (!positionTimerRef.current) {
+        positionTimerRef.current = setTimeout(() => {
+          setPositionWarningCount(prev => {
+             const newCount = prev + 1;
+             if (newCount > 3) {
+               recordViolation('position_wrong_auto_submit');
+               alert('EXAM AUTO-SUBMITTED: Improper head/eye position detected too many times.');
+               finishExam();
+             } else {
+               recordViolation('position_wrong_warning');
+               setShowPositionWarning(true);
+               
+               // Auto-hide warning after 5 seconds
+               if (positionWarningHideTimerRef.current) clearTimeout(positionWarningHideTimerRef.current);
+               positionWarningHideTimerRef.current = setTimeout(() => {
+                 setShowPositionWarning(false);
+               }, 5000);
+             }
+             return newCount;
+          });
+        }, 3000); 
+      }
+    } else {
+      // Position is correct again or face is missing
+      if (positionTimerRef.current) {
+        clearTimeout(positionTimerRef.current);
+        positionTimerRef.current = null;
+      }
+      if (positionWarningHideTimerRef.current) {
+        clearTimeout(positionWarningHideTimerRef.current);
+        positionWarningHideTimerRef.current = null;
+      }
+      setShowPositionWarning(false);
+    }
+    
+    return () => {
+      if (positionTimerRef.current) clearTimeout(positionTimerRef.current);
+    }
+  }, [isPositionWrong, isFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
 
   // Multi-face detection warning (recurring every 5 seconds)
   useEffect(() => {
@@ -1077,6 +1138,27 @@ const Exam: React.FC = () => {
         Screenshots and copying are disabled
       </div>
 
+      {/* Improper Position Warning Modal */}
+      {showPositionWarning && (
+        <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+          <div className="card text-center shadow-lg border-2" style={{ maxWidth: '450px', borderColor: '#f59e0b' }}>
+            <AlertTriangle size={64} className="mx-auto mb-4" color="#f59e0b" />
+            <h2 className="mb-2" style={{ color: '#f59e0b', fontSize: '1.75rem' }}>Improper Position</h2>
+            <p className="text-muted mb-4" style={{ fontSize: '1.1rem' }}>
+              {positionWarning || "We detected an improper head or eye position. Please look directly at the screen and adjust your posture."}
+            </p>
+            <div style={{ background: '#fffbeb', padding: '1rem', borderRadius: '0.5rem', marginTop: '1.5rem' }}>
+              <p style={{ fontWeight: 700, color: '#b45309', margin: 0 }}>
+                Warning {positionWarningCount} of 3
+              </p>
+              <p style={{ fontSize: '0.85rem', color: '#b45309', marginTop: '0.5rem', marginBottom: 0 }}>
+                The exam will automatically submit on the 4th violation.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Face Detection Warning Modal */}
       {showFaceWarning && (
         <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
