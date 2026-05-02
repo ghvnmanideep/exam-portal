@@ -10,6 +10,7 @@ import {
   ShieldCheck, Layout, Eye, Ban, MousePointer2 
 } from 'lucide-react';
 import { useFaceDetection } from '../hooks/useFaceDetection';
+import { useObjectDetection } from '../hooks/useObjectDetection';
 
 /**
  * The duration of the exam measured in seconds.
@@ -46,6 +47,8 @@ const Exam: React.FC = () => {
   const [showFaceWarning, setShowFaceWarning] = useState(false);
   const [showPositionWarning, setShowPositionWarning] = useState(false);
   const [showMultiFaceWarning, setShowMultiFaceWarning] = useState(false);
+  const [showObjectWarning, setShowObjectWarning] = useState(false);
+  const [objectWarningCount, setObjectWarningCount] = useState(0);
   const [fullscreenTimeLeft, setFullscreenTimeLeft] = useState(30);
   const [isBlurred, setIsBlurred] = useState(false);
   const [shortcutViolationCount, setShortcutViolationCount] = useState(0);
@@ -55,6 +58,7 @@ const Exam: React.FC = () => {
   const mobileScreenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const { isFaceDetected, isMultiFaceDetected, isPositionWrong, positionWarning } = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
+  const { isObjectDetected, detectedObjects, modelStatus, debugPredictions } = useObjectDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
   const navigate = useNavigate();
   const user = getUser();
@@ -68,6 +72,8 @@ const Exam: React.FC = () => {
   const faceMissingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const positionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullscreenTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const objectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const objectWarningHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePermissionDenied = React.useCallback(() => {
     setPermissionDenied(true);
@@ -520,6 +526,51 @@ const Exam: React.FC = () => {
       if (intervalId) clearInterval(intervalId);
     };
   }, [isMultiFaceDetected, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
+
+  // Restricted object detection warning and Auto-Submit
+  const detectedObjectsStr = detectedObjects.join(', ');
+  
+  useEffect(() => {
+    if (setupStep !== 'ready' || isFinished || permissionDenied || screenPermissionDenied || !cameraStream) return;
+
+    if (isObjectDetected && detectedObjectsStr.length > 0) {
+      // If we haven't triggered a warning recently (cooldown)
+      if (!objectTimerRef.current) {
+        
+        // 1. Immediately increment violation and show warning
+        setObjectWarningCount(prev => {
+           const newCount = prev + 1;
+           if (newCount > 2) {
+             recordViolation('restricted_object_detected_auto_submit');
+             alert(`EXAM AUTO-SUBMITTED: Restricted object(s) detected (${detectedObjectsStr}).`);
+             finishExam();
+           } else {
+             recordViolation(`restricted_object_warning: ${detectedObjectsStr}`);
+             setShowObjectWarning(true);
+             
+             // Hide the modal after 4 seconds
+             if (objectWarningHideTimerRef.current) clearTimeout(objectWarningHideTimerRef.current);
+             objectWarningHideTimerRef.current = setTimeout(() => {
+               setShowObjectWarning(false);
+             }, 4000);
+           }
+           return newCount;
+        });
+
+        // 2. Set a 5-second cooldown before we can trigger another violation
+        objectTimerRef.current = setTimeout(() => {
+          objectTimerRef.current = null;
+        }, 5000);
+      }
+    }
+    // We intentionally DO NOT have an 'else' block here.
+    // If the object disappears, we still want the warning modal to stay on screen for the full 4 seconds
+    // so the student has time to read it!
+    
+    return () => {
+      // Only clear on unmount, not on every re-render
+    }
+  }, [isObjectDetected, detectedObjectsStr, isFinished, permissionDenied, screenPermissionDenied, cameraStream, setupStep]);
 
   // Mouse leave tracking (Auto-Submit after 30s)
   useEffect(() => {
@@ -1127,6 +1178,14 @@ const Exam: React.FC = () => {
         </>
       )}
 
+      {/* DEBUG OVERLAY */}
+      <div style={{ position: 'fixed', bottom: 10, left: 10, background: 'rgba(0,0,0,0.8)', color: 'lime', padding: '10px', zIndex: 999999, fontSize: '12px', fontFamily: 'monospace' }}>
+        <div>Model Status: {modelStatus}</div>
+        <div>Objects Detected: {debugPredictions || 'None'}</div>
+        <div>Violations: {objectWarningCount} / 3</div>
+        <div>Is Warning Active: {showObjectWarning ? 'YES' : 'NO'}</div>
+      </div>
+
       {/* Right-click & Screenshot blocked toasts */}
       <div className={`right-click-toast ${showRightClickToast ? 'right-click-toast--visible' : ''}`}>
         <span className="right-click-toast__icon">🚫</span>
@@ -1179,6 +1238,27 @@ const Exam: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Object Detection Warning Modal */}
+      {showObjectWarning && (
+        <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
+          <div className="card text-center shadow-lg border-2" style={{ maxWidth: '450px', borderColor: 'var(--error-color)' }}>
+            <AlertTriangle size={64} className="mx-auto mb-4" color="var(--error-color)" />
+            <h2 className="mb-2" style={{ color: 'var(--error-color)', fontSize: '1.75rem' }}>Restricted Object Detected</h2>
+            <p className="text-muted mb-4" style={{ fontSize: '1.1rem' }}>
+              We detected restricted object(s) in your camera feed: <strong>{detectedObjectsStr}</strong>. This is a severe security violation.
+            </p>
+            <div style={{ background: 'var(--error-bg)', padding: '1rem', borderRadius: '0.5rem', marginTop: '1.5rem' }}>
+              <p style={{ fontWeight: 700, color: 'var(--error-color)', margin: 0 }}>
+                Warning {objectWarningCount} of 2
+              </p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--error-color)', marginTop: '0.5rem', marginBottom: 0 }}>
+                The exam will automatically submit on the 3rd violation.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Multi-Face Detection Warning Modal */}
       {showMultiFaceWarning && (
         <div className="fullscreen-overlay z-[9999]" style={{ background: 'rgba(0,0,0,0.85)' }}>
