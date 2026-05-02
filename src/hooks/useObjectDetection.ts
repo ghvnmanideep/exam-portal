@@ -18,8 +18,6 @@ export const useObjectDetection = (
   const [isObjectDetected, setIsObjectDetected] = useState<boolean>(false);
   const [detectedObjects, setDetectedObjects] = useState<string[]>([]);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
-  const [modelStatus, setModelStatus] = useState<string>('initializing');
-  const [debugPredictions, setDebugPredictions] = useState<string>('');
 
   const modelRef = useRef<cocoSsd.ObjectDetection | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -33,18 +31,14 @@ export const useObjectDetection = (
 
     const initializeModel = async () => {
       try {
-        setModelStatus('loading tf');
         await tf.ready();
-        setModelStatus('loading coco');
         const model = await cocoSsd.load();
         if (isMounted) {
           modelRef.current = model;
           setIsInitialized(true);
-          setModelStatus('ready');
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error initializing Object Detection Model:", error);
-        setModelStatus('error: ' + error?.message);
       }
     };
 
@@ -104,8 +98,6 @@ export const useObjectDetection = (
           // detect(img, maxNumBoxes, minScore) - using 0.35 score for maximum sensitivity
           const predictions = await model.detect(video, 20, 0.35);
           
-          setDebugPredictions(predictions.map(p => `${p.class} (${Math.round(p.score * 100)}%)`).join(', '));
-          
           const foundMalpracticeObjects = predictions
             .filter(pred => MALPRACTICE_OBJECTS.includes(pred.class))
             .map(pred => pred.class);
@@ -156,5 +148,5 @@ export const useObjectDetection = (
     };
   }, [active, isInitialized, stream]);
 
-  return { isObjectDetected, detectedObjects, modelStatus, debugPredictions };
+  return { isObjectDetected, detectedObjects };
 };

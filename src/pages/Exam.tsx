@@ -58,7 +58,7 @@ const Exam: React.FC = () => {
   const mobileScreenshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const { isFaceDetected, isMultiFaceDetected, isPositionWrong, positionWarning } = useFaceDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
-  const { isObjectDetected, detectedObjects, modelStatus, debugPredictions } = useObjectDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
+  const { isObjectDetected, detectedObjects } = useObjectDetection(cameraStream, !isFinished && !permissionDenied && !screenPermissionDenied);
   
   const navigate = useNavigate();
   const user = getUser();
@@ -1178,13 +1178,7 @@ const Exam: React.FC = () => {
         </>
       )}
 
-      {/* DEBUG OVERLAY */}
-      <div style={{ position: 'fixed', bottom: 10, left: 10, background: 'rgba(0,0,0,0.8)', color: 'lime', padding: '10px', zIndex: 999999, fontSize: '12px', fontFamily: 'monospace' }}>
-        <div>Model Status: {modelStatus}</div>
-        <div>Objects Detected: {debugPredictions || 'None'}</div>
-        <div>Violations: {objectWarningCount} / 3</div>
-        <div>Is Warning Active: {showObjectWarning ? 'YES' : 'NO'}</div>
-      </div>
+
 
       {/* Right-click & Screenshot blocked toasts */}
       <div className={`right-click-toast ${showRightClickToast ? 'right-click-toast--visible' : ''}`}>
